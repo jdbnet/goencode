@@ -64,7 +64,7 @@ func (s *Server) authMiddleware(next http.Handler) http.Handler {
 		// let's just use string slicing or import "strings"
 		
 		// To be safe without adding imports manually if I don't know the exact list:
-		if s.cfg.Auth.Username == "" || r.URL.Path == "/login" || (len(r.URL.Path) >= 8 && r.URL.Path[:8] == "/static/") {
+		if s.cfg.Auth.Username == "" || r.URL.Path == "/login" || r.URL.Path == "/api/status" || (len(r.URL.Path) >= 8 && r.URL.Path[:8] == "/static/") {
 			next.ServeHTTP(w, r)
 			return
 		}
@@ -128,6 +128,7 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("/api/sse", s.sse.HandleSSE)
 	
 	s.mux.HandleFunc("/api/queue", s.handleGetQueue)
+	s.mux.HandleFunc("/api/status", s.handleStatus)
 	s.mux.HandleFunc("/api/jobs/bump/", s.handleBumpJob)
 	s.mux.HandleFunc("/api/jobs/cancel/", s.handleCancelJob)
 	
@@ -151,6 +152,42 @@ func (s *Server) handleGetLogs(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	logs := logger.GetRecentLogs()
 	json.NewEncoder(w).Encode(logs)
+}
+
+func (s *Server) handleStatus(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+
+	stats, err := db.GetDashboardStats()
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	jobs, err := db.GetPendingJobs()
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	var processingJob *db.Job
+	for i := range jobs {
+		if jobs[i].Status == "processing" {
+			processingJob = &jobs[i]
+			break
+		}
+	}
+
+	response := map[string]interface{}{
+		"stats": map[string]interface{}{
+			"files_encoded":         stats.FilesEncoded,
+			"saved_space_bytes":     stats.TotalSavedSpace,
+			"saved_space_formatted": formatBytes(stats.TotalSavedSpace),
+			"queue_length":          stats.QueueLength,
+		},
+		"current_job": processingJob,
+	}
+
+	json.NewEncoder(w).Encode(response)
 }
 
 func formatBytes(bytes int64) string {
