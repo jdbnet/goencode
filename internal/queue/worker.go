@@ -231,10 +231,30 @@ func (m *Manager) runEncoder(job db.Job) error {
 		return fmt.Errorf("ffmpeg error: %v, last output: %s", err, lastErrLine)
 	}
 
-	// Validate
+	// Validate format integrity
 	if err := m.encoder.ValidateFile(tempOutPath); err != nil {
 		os.Remove(tempOutPath)
 		return fmt.Errorf("validation failed: %w", err)
+	}
+
+	// Validate duration (ensure it wasn't cut short)
+	if duration > 0 {
+		outDuration, err := m.encoder.ProbeDuration(tempOutPath)
+		if err != nil {
+			os.Remove(tempOutPath)
+			return fmt.Errorf("failed to probe output duration: %w", err)
+		}
+		
+		// Allow up to 5 seconds of difference (sometimes containers/padding vary slightly)
+		diff := duration - outDuration
+		if diff < 0 {
+			diff = -diff
+		}
+		
+		if diff > 5.0 {
+			os.Remove(tempOutPath)
+			return fmt.Errorf("duration mismatch: original is %.2fs, encoded is %.2fs", duration, outDuration)
+		}
 	}
 
 	// Calculate sizes
