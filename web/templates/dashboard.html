@@ -61,12 +61,16 @@
             let actions = '';
             if (job.status === 'pending') {
                 actions = `
-                    <button class="btn btn-sm btn-outline" onclick="bumpJob(${job.id})">Bump</button>
-                    <button class="btn btn-sm btn-danger" onclick="cancelJob(${job.id})">Cancel</button>
+                    <div style="display: flex; gap: 0.5rem; flex-wrap: wrap;">
+                        <button class="btn btn-sm btn-outline" onclick="bumpJob(${job.id})">Bump</button>
+                        <button class="btn btn-sm btn-danger" onclick="cancelJob(${job.id})">Cancel</button>
+                    </div>
                 `;
             } else if (job.status === 'processing') {
                 actions = `
-                    <button class="btn btn-sm btn-danger" onclick="cancelJob(${job.id})">Cancel</button>
+                    <div style="display: flex; gap: 0.5rem; flex-wrap: wrap;">
+                        <button class="btn btn-sm btn-danger" onclick="cancelJob(${job.id})">Cancel</button>
+                    </div>
                 `;
             } else if (job.status === 'failed') {
                 // Retry not fully implemented in API yet, but could re-enqueue
