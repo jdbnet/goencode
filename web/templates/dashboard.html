@@ -1,0 +1,123 @@
+{{define "content"}}
+<div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 1rem; margin-bottom: 2rem;">
+    <div class="card" style="text-align: center; padding: 1.5rem;">
+        <h3 style="margin-top: 0; color: var(--text-secondary); font-size: 0.875rem; text-transform: uppercase;">Files Encoded</h3>
+        <div style="font-size: 2rem; font-weight: 700; color: var(--accent);">{{.FilesEncoded}}</div>
+    </div>
+    <div class="card" style="text-align: center; padding: 1.5rem;">
+        <h3 style="margin-top: 0; color: var(--text-secondary); font-size: 0.875rem; text-transform: uppercase;">Space Saved</h3>
+        <div style="font-size: 2rem; font-weight: 700; color: var(--accent);">{{.SavedSpace}}</div>
+    </div>
+    <div class="card" style="text-align: center; padding: 1.5rem;">
+        <h3 style="margin-top: 0; color: var(--text-secondary); font-size: 0.875rem; text-transform: uppercase;">In Queue</h3>
+        <div style="font-size: 2rem; font-weight: 700; color: var(--accent);">{{.QueueLength}}</div>
+    </div>
+</div>
+
+<div class="card">
+    <h2>Active Job Queue</h2>
+    <div class="table-container">
+        <table>
+            <thead>
+                <tr>
+                    <th>ID</th>
+                    <th>File</th>
+                    <th>Type</th>
+                    <th>Priority</th>
+                    <th>Status</th>
+                    <th>Actions</th>
+                </tr>
+            </thead>
+            <tbody id="queue-body">
+                <!-- Populated by JS -->
+            </tbody>
+        </table>
+    </div>
+</div>
+
+<script>
+    const queueBody = document.getElementById('queue-body');
+
+    async function loadQueue() {
+        const res = await fetch('/api/queue');
+        const jobs = await res.json();
+        renderQueue(jobs || []);
+    }
+
+    function renderQueue(jobs) {
+        queueBody.innerHTML = jobs.map(job => {
+            let statusBadge = `<span class="badge ${job.status}">${job.status}</span>`;
+            
+            let progressHtml = '';
+            if (job.status === 'processing') {
+                progressHtml = `
+                    <div class="progress-bar">
+                        <div class="progress-fill" id="progress-${job.id}" style="width: 0%"></div>
+                    </div>
+                    <div style="font-size: 0.75rem; color: var(--text-secondary); margin-top: 0.25rem;" id="progress-text-${job.id}">0%</div>
+                `;
+            }
+
+            let actions = '';
+            if (job.status === 'pending') {
+                actions = `
+                    <button class="btn btn-sm btn-outline" onclick="bumpJob(${job.id})">Bump</button>
+                    <button class="btn btn-sm btn-danger" onclick="cancelJob(${job.id})">Cancel</button>
+                `;
+            } else if (job.status === 'processing') {
+                actions = `
+                    <button class="btn btn-sm btn-danger" onclick="cancelJob(${job.id})">Cancel</button>
+                `;
+            } else if (job.status === 'failed') {
+                // Retry not fully implemented in API yet, but could re-enqueue
+                actions = `<span style="color: var(--error); font-size: 0.75rem;">${job.error_message}</span>`;
+            }
+
+            return `
+                <tr id="job-${job.id}">
+                    <td>${job.id}</td>
+                    <td style="word-break: break-all;">
+                        ${job.file_path.split('/').pop()}
+                        ${progressHtml}
+                    </td>
+                    <td><span class="badge" style="background: var(--surface-hover); color: var(--text-primary); border-color: var(--border);">${job.media_type}</span></td>
+                    <td>${job.priority}</td>
+                    <td>${statusBadge}</td>
+                    <td>${actions}</td>
+                </tr>
+            `;
+        }).join('');
+    }
+
+    async function bumpJob(id) {
+        await fetch('/api/jobs/bump/' + id, { method: 'POST' });
+        loadQueue();
+    }
+
+    async function cancelJob(id) {
+        if (!confirm("Cancel job?")) return;
+        await fetch('/api/jobs/cancel/' + id, { method: 'POST' });
+        loadQueue();
+    }
+
+    // SSE listeners
+    window.sse.addEventListener('queue_updated', () => loadQueue());
+    window.sse.addEventListener('job_started', () => loadQueue());
+    window.sse.addEventListener('job_completed', () => loadQueue());
+    window.sse.addEventListener('job_failed', () => loadQueue());
+    window.sse.addEventListener('job_added', () => loadQueue());
+
+    window.sse.addEventListener('progress', (e) => {
+        const data = JSON.parse(e.data);
+        const fill = document.getElementById(`progress-${data.id}`);
+        const text = document.getElementById(`progress-text-${data.id}`);
+        if (fill && text) {
+            fill.style.width = `${data.progress}%`;
+            text.innerText = `${data.progress}%`;
+        }
+    });
+
+    // Initial load
+    loadQueue();
+</script>
+{{end}}

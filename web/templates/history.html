@@ -1,0 +1,80 @@
+{{define "content"}}
+<div class="card">
+    <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 1rem; margin-bottom: 1rem;">
+        <h2 style="margin: 0;">History</h2>
+        <div style="display: flex; align-items: center; gap: 1rem;">
+            <input type="text" id="history-search" class="form-control" placeholder="Search history..." onkeyup="filterHistory()" style="max-width: 300px;">
+            <span style="color: var(--text-secondary); font-size: 0.875rem; white-space: nowrap;">Total Records: <span id="record-count">{{.Total}}</span></span>
+        </div>
+    </div>
+    <div class="table-container">
+        <table>
+            <thead>
+                <tr>
+                    <th>File</th>
+                    <th>Type</th>
+                    <th>Status</th>
+                    <th>Original Size</th>
+                    <th>Encoded Size</th>
+                    <th>Saved</th>
+                    <th>Time</th>
+                    <th>Date</th>
+                </tr>
+            </thead>
+            <tbody>
+                {{range .Reports}}
+                <tr>
+                    <td style="word-break: break-all;">
+                        <div style="font-weight: 500;">{{.FilePath}}</div>
+                        {{if .ErrorMessage}}
+                        <div style="color: var(--error); font-size: 0.75rem; margin-top: 0.25rem;">{{.ErrorMessage}}</div>
+                        {{end}}
+                    </td>
+                    <td><span class="badge" style="background: var(--surface-hover); color: var(--text-primary); border-color: var(--border);">{{.MediaType}}</span></td>
+                    <td><span class="badge {{.Status}}">{{.Status}}</span></td>
+                    <td>{{formatBytes .OriginalSize}}</td>
+                    <td>{{formatBytes .EncodedSize}}</td>
+                    <td style="color: var(--accent);">{{formatBytes .SizeSaved}}</td>
+                    <td>{{.ProcessingTime}}s</td>
+                    <td>{{.CreatedAt.Format "Jan 02, 15:04:05"}}</td>
+                </tr>
+                {{else}}
+                <tr>
+                    <td colspan="8" style="text-align: center; color: var(--text-secondary);">No job reports found.</td>
+                </tr>
+                {{end}}
+            </tbody>
+        </table>
+    </div>
+</div>
+
+<script>
+function filterHistory() {
+    var input, filter, table, tr, td, i, txtValue;
+    input = document.getElementById("history-search");
+    filter = input.value.toUpperCase();
+    table = document.querySelector(".table-container table");
+    tr = table.getElementsByTagName("tr");
+    var visibleCount = 0;
+
+    for (i = 1; i < tr.length; i++) { // Skip header row
+        // If it's the "No job reports found" row, skip it
+        if (tr[i].cells.length === 1) continue;
+        
+        td = tr[i].getElementsByTagName("td")[0]; // File column
+        if (td) {
+            txtValue = td.textContent || td.innerText;
+            if (txtValue.toUpperCase().indexOf(filter) > -1) {
+                tr[i].style.display = "";
+                visibleCount++;
+            } else {
+                tr[i].style.display = "none";
+            }
+        }
+    }
+    
+    // Update the record count
+    document.getElementById("record-count").textContent = filter ? visibleCount : "{{.Total}}";
+}
+</script>
+{{end}}

@@ -1,0 +1,21 @@
+name: Build
+
+on:
+  push:
+    branches: [ main ]
+  workflow_dispatch:
+
+jobs:
+  build-and-push:
+    name: Build and Push
+    runs-on: build-htz-01
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Build and push Docker image
+        run: |
+          docker build -t cr.jdbnet.co.uk/public/goencode:latest .
+          docker push cr.jdbnet.co.uk/public/goencode:latest

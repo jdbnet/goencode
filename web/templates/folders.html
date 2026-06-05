@@ -1,0 +1,152 @@
+{{define "content"}}
+<div style="display: flex; gap: 2rem; align-items: flex-start; flex-wrap: wrap;">
+    <div class="card" style="flex: 2; min-width: 600px;">
+        <h2>Configured Watch Folders</h2>
+        <div class="table-container">
+            <table>
+                <thead>
+                    <tr>
+                        <th>Path</th>
+                        <th>Type</th>
+                        <th>Resolution</th>
+                        <th>Flags</th>
+                        <th>Actions</th>
+                    </tr>
+                </thead>
+                <tbody id="folders-body">
+                    <!-- Populated by JS -->
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <div class="card" style="flex: 1; min-width: 300px;">
+        <h2>Add Watch Folder</h2>
+        <form id="add-folder-form" onsubmit="addFolder(event)">
+            <div class="form-group">
+                <label>Folder Path</label>
+                <input type="text" id="folder_path" class="form-control" placeholder="/media/movies" required>
+            </div>
+            <div class="form-group">
+                <label>Media Type</label>
+                <select id="media_type" class="form-control" required>
+                    <option value="video">Video</option>
+                    <option value="audio">Audio</option>
+                </select>
+            </div>
+            <div class="form-group">
+                <label>Target Resolution (Video only)</label>
+                <select id="target_resolution" class="form-control">
+                    <option value="">Original</option>
+                    <option value="1080p">1080p</option>
+                    <option value="720p">720p</option>
+                    <option value="480p">480p</option>
+                </select>
+            </div>
+            <div class="form-group" id="video_crf_group">
+                <label>CRF (Video only, 0-51)</label>
+                <input type="number" id="crf" class="form-control" placeholder="22" min="0" max="51">
+            </div>
+            <div class="form-group" id="video_preset_group">
+                <label>Preset (Video only)</label>
+                <select id="preset" class="form-control">
+                    <option value="">Default (medium)</option>
+                    <option value="ultrafast">ultrafast</option>
+                    <option value="superfast">superfast</option>
+                    <option value="veryfast">veryfast</option>
+                    <option value="faster">faster</option>
+                    <option value="fast">fast</option>
+                    <option value="medium">medium</option>
+                    <option value="slow">slow</option>
+                    <option value="slower">slower</option>
+                    <option value="veryslow">veryslow</option>
+                </select>
+            </div>
+            <div class="form-group">
+                <label>Custom FFmpeg Flags (Optional)</label>
+                <input type="text" id="custom_ffmpeg_flags" class="form-control" placeholder="-vcodec copy">
+            </div>
+            <button type="submit" class="btn" style="width: 100%;">Add Folder</button>
+        </form>
+    </div>
+</div>
+
+<script>
+    const foldersBody = document.getElementById('folders-body');
+
+    async function loadFolders() {
+        const res = await fetch('/api/folders');
+        const folders = await res.json();
+        renderFolders(folders || []);
+    }
+
+    function renderFolders(folders) {
+        foldersBody.innerHTML = folders.map(f => `
+            <tr>
+                <td style="word-break: break-all;">${f.folder_path}</td>
+                <td><span class="badge" style="background: var(--surface-hover); color: var(--text-primary); border-color: var(--border);">${f.media_type}</span></td>
+                <td>${f.target_resolution || '-'}</td>
+                <td><code style="background: var(--bg); padding: 0.2rem; border-radius: 4px;">${f.custom_ffmpeg_flags || '-'}</code></td>
+                <td>
+                    <button class="btn btn-sm btn-danger" onclick="deleteFolder(${f.id})">Delete</button>
+                </td>
+            </tr>
+        `).join('');
+    }
+
+    async function addFolder(e) {
+        e.preventDefault();
+
+        let flags = document.getElementById('custom_ffmpeg_flags').value;
+        const crf = document.getElementById('crf').value;
+        const preset = document.getElementById('preset').value;
+        const mediaType = document.getElementById('media_type').value;
+
+        if (mediaType === 'video') {
+            if (crf) {
+                flags += (flags ? ' ' : '') + '-crf ' + crf;
+            }
+            if (preset) {
+                flags += (flags ? ' ' : '') + '-preset ' + preset;
+            }
+        }
+
+        const payload = {
+            folder_path: document.getElementById('folder_path').value,
+            media_type: mediaType,
+            target_resolution: document.getElementById('target_resolution').value,
+            custom_ffmpeg_flags: flags,
+        };
+        const res = await fetch('/api/folders/add', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload)
+        });
+        if (res.ok) {
+            document.getElementById('add-folder-form').reset();
+            loadFolders();
+        } else {
+            alert('Failed to add folder');
+        }
+    }
+
+    async function deleteFolder(id) {
+        if (!confirm('Delete watch folder?')) return;
+        const res = await fetch('/api/folders/delete/' + id, { method: 'DELETE' });
+        if (res.ok) {
+            loadFolders();
+        } else {
+            alert('Failed to delete folder');
+        }
+    }
+
+    loadFolders();
+
+    document.getElementById('media_type').addEventListener('change', function (e) {
+        const isVideo = e.target.value === 'video';
+        document.getElementById('target_resolution').parentElement.style.display = isVideo ? 'block' : 'none';
+        document.getElementById('video_crf_group').style.display = isVideo ? 'block' : 'none';
+        document.getElementById('video_preset_group').style.display = isVideo ? 'block' : 'none';
+    });
+</script>
+{{end}}

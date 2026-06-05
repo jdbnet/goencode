@@ -1,0 +1,52 @@
+{{define "layout"}}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>GoEncode</title>
+    <link rel="icon" type="image/png" href="/static/icon.png">
+    <link rel="stylesheet" href="/static/style.css">
+    <script>
+        // Global SSE listener setup early so components can attach to it
+        const sse = new EventSource('/api/sse');
+        window.sse = sse;
+
+        window.addEventListener('beforeunload', () => {
+            if (window.sse) {
+                window.sse.close();
+            }
+        });
+    </script>
+</head>
+<body>
+    <nav class="navbar">
+        <div class="navbar-brand" style="display: flex; align-items: center;">
+            <img src="/static/icon.png" alt="" style="height: 1.5rem; margin-right: 0.5rem; border-radius: 4px;">
+            Go<span>Encode</span>
+        </div>
+        <div class="nav-links">
+            <a href="/" id="nav-dashboard">Dashboard</a>
+            <a href="/folders" id="nav-folders">Watch Folders</a>
+            <a href="/history" id="nav-history">History</a>
+            <a href="/logs" id="nav-logs">Logs</a>
+            {{if .AuthEnabled}}
+            <a href="/logout" style="margin-left: 2rem; color: #ff4444; border-color: #ff4444;">Sign Out</a>
+            {{end}}
+        </div>
+    </nav>
+    <div class="container">
+        {{template "content" .}}
+    </div>
+    
+    <script>
+        // Set active nav link
+        const path = window.location.pathname;
+        if (path === "/") document.getElementById("nav-dashboard").classList.add("active");
+        else if (path.startsWith("/folders")) document.getElementById("nav-folders").classList.add("active");
+        else if (path.startsWith("/history")) document.getElementById("nav-history").classList.add("active");
+        else if (path.startsWith("/logs")) document.getElementById("nav-logs").classList.add("active");
+    </script>
+</body>
+</html>
+{{end}}

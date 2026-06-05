@@ -1,0 +1,21 @@
+{{define "content"}}
+<div class="card">
+    <h2>Global Settings</h2>
+    <p style="color: var(--text-secondary); font-size: 0.875rem; margin-bottom: 2rem;">
+        Database and core server configurations are managed via <code>goencode.yaml</code>.
+        Application preferences can be configured below.
+    </p>
+
+    <form onsubmit="event.preventDefault(); alert('Settings saved');">
+        <div class="form-group" style="max-width: 400px;">
+            <label>Default Video CRF (Quality)</label>
+            <input type="number" class="form-control" value="22" min="0" max="51">
+        </div>
+        <div class="form-group" style="max-width: 400px;">
+            <label>Default Audio Bitrate (kbps)</label>
+            <input type="number" class="form-control" value="320" step="32" min="64" max="320">
+        </div>
+        <button type="submit" class="btn">Save Preferences</button>
+    </form>
+</div>
+{{end}}

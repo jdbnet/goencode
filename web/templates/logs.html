@@ -1,0 +1,60 @@
+{{define "content"}}
+<div class="header" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 2rem;">
+    <div>
+        <h2 style="margin: 0;">System Logs</h2>
+        <p style="color: var(--text-secondary); margin-top: 0.5rem;">Live streaming output of the application logs.</p>
+    </div>
+</div>
+
+<div class="card" style="padding: 0;">
+    <pre id="log-container" style="margin: 0; padding: 1.5rem; background: var(--surface); color: var(--text-primary); border-radius: 12px; font-family: monospace; height: 600px; overflow-y: auto; white-space: pre-wrap; word-wrap: break-word; font-size: 0.875rem; line-height: 1.5;"></pre>
+</div>
+
+<script>
+    const logContainer = document.getElementById('log-container');
+    let autoScroll = true;
+
+    logContainer.addEventListener('scroll', () => {
+        const isAtBottom = logContainer.scrollHeight - logContainer.scrollTop <= logContainer.clientHeight + 50;
+        autoScroll = isAtBottom;
+    });
+
+    function appendLog(timestamp, message) {
+        const entry = document.createElement('div');
+        const tsSpan = document.createElement('span');
+        tsSpan.style.color = '#888';
+        tsSpan.textContent = `[${timestamp}] `;
+        
+        const msgSpan = document.createElement('span');
+        msgSpan.textContent = message;
+
+        entry.appendChild(tsSpan);
+        entry.appendChild(msgSpan);
+        logContainer.appendChild(entry);
+
+        if (autoScroll) {
+            logContainer.scrollTop = logContainer.scrollHeight;
+        }
+    }
+
+    // Load recent logs first
+    fetch('/api/logs')
+        .then(response => response.json())
+        .then(logs => {
+            if (logs && logs.length > 0) {
+                logs.forEach(log => {
+                    appendLog(log.timestamp, log.message);
+                });
+            }
+        })
+        .catch(error => console.error('Error fetching logs:', error));
+
+    // Listen for live updates
+    if (window.sse) {
+        window.sse.addEventListener('log', function(e) {
+            const data = JSON.parse(e.data);
+            appendLog(data.timestamp, data.message);
+        });
+    }
+</script>
+{{end}}

@@ -1,0 +1,25 @@
+services:
+  db:
+    image: mariadb:10.11
+    restart: always
+    environment:
+      MYSQL_ROOT_PASSWORD: root
+      MYSQL_DATABASE: encoder
+    volumes:
+      - db_data:/var/lib/mysql
+    ports:
+      - "3307:3306"
+
+  app:
+    build: .
+    restart: always
+    ports:
+      - "8080:8080"
+    volumes:
+      - ./goencode.yaml:/etc/goencode/config.yaml:ro
+      - ./media:/media # Mount your media folder here
+    depends_on:
+      - db
+
+volumes:
+  db_data:

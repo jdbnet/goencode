@@ -1,0 +1,21 @@
+server:
+  port: 8080
+  listen_addr: "0.0.0.0"
+
+auth:
+  username: "admin"
+  password: "password"
+
+database:
+  host: "db"
+  port: 3306
+  user: "root"
+  password: "root"
+  name: "encoder"
+
+encoder:
+  ffmpeg_path: "ffmpeg"
+  temp_dir: "/tmp/goencode"
+
+logging:
+  level: "info"
