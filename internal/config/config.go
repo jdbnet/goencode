@@ -27,6 +27,7 @@ func getEnvInt(key string, defaultVal int) int {
 type ServerConfig struct {
 	Port       int    `yaml:"port"`
 	ListenAddr string `yaml:"listen_addr"`
+	TimeZone   string `yaml:"timezone"`
 }
 
 type DatabaseConfig struct {
@@ -93,6 +94,15 @@ func LoadConfig(path string) (*Config, error) {
 	}
 	if cfg.Database.Port == 0 {
 		cfg.Database.Port = 3306
+	}
+
+	if envTZ := os.Getenv("TZ"); envTZ != "" {
+		cfg.Server.TimeZone = envTZ
+	}
+
+	// Apply timezone if set
+	if cfg.Server.TimeZone != "" {
+		os.Setenv("TZ", cfg.Server.TimeZone)
 	}
 
 	return &cfg, nil

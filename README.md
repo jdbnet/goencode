@@ -46,6 +46,7 @@ services:
       # Web Server Configuration
       - GOENCODE_SERVER_LISTEN=0.0.0.0
       - GOENCODE_SERVER_PORT=8080
+      - TZ=Europe/London
       
       # Web UI Authentication (Optional)
       - GOENCODE_AUTH_USER=admin
@@ -89,6 +90,7 @@ GoEncode can be configured via `goencode.yaml` or entirely via environment varia
 | `GOENCODE_DB_NAME` | Database name | `goencode` |
 | `GOENCODE_SERVER_LISTEN` | IP to bind the web interface | `0.0.0.0` |
 | `GOENCODE_SERVER_PORT` | Port for the web interface | `8080` |
+| `TZ` | Container TimeZone | `UTC` |
 | `GOENCODE_AUTH_USER` | Username for the web UI | |
 | `GOENCODE_AUTH_PASS` | Password for the web UI | |
 | `GOENCODE_ENCODER_TEMP`| Temp directory for processing jobs | `/tmp/goencode` |

@@ -15,9 +15,9 @@ RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -o /app/bin/goencode ./cmd/go
 # Final stage
 FROM debian:bookworm-slim
 
-# Install ffmpeg and ca-certificates
+# Install ffmpeg, ca-certificates, and tzdata for timezone support
 RUN apt-get update && \
-    apt-get install -y --no-install-recommends ffmpeg ca-certificates && \
+    apt-get install -y --no-install-recommends ffmpeg ca-certificates tzdata && \
     rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app

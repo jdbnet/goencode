@@ -1,6 +1,7 @@
 server:
   port: 8080
   listen_addr: "0.0.0.0"
+  timezone: "UTC"
 
 auth:
   username: "admin"
