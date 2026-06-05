@@ -82,7 +82,7 @@ func LoadConfig(path string) (*Config, error) {
 	cfg.Database.Password = getEnvStr("GOENCODE_DB_PASS", cfg.Database.Password)
 	cfg.Database.Name = getEnvStr("GOENCODE_DB_NAME", cfg.Database.Name)
 	cfg.Encoder.FFmpegPath = getEnvStr("GOENCODE_FFMPEG_PATH", cfg.Encoder.FFmpegPath)
-	cfg.Encoder.TempDir = getEnvStr("GOENCODE_TEMP_DIR", cfg.Encoder.TempDir)
+	cfg.Encoder.TempDir = getEnvStr("GOENCODE_ENCODER_TEMP", cfg.Encoder.TempDir)
 	cfg.Logging.Level = getEnvStr("GOENCODE_LOG_LEVEL", cfg.Logging.Level)
 
 	// Defaults if missing entirely
@@ -94,6 +94,9 @@ func LoadConfig(path string) (*Config, error) {
 	}
 	if cfg.Database.Port == 0 {
 		cfg.Database.Port = 3306
+	}
+	if cfg.Encoder.TempDir == "" {
+		cfg.Encoder.TempDir = "/tmp/goencode"
 	}
 
 	if envTZ := os.Getenv("TZ"); envTZ != "" {
