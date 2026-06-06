@@ -124,13 +124,30 @@ func AddJobReport(j Job, status string, encodedSize int64, sizeSaved int64, proc
 	return err
 }
 
-func GetJobReports(limit, offset int) ([]JobReport, int, error) {
+func GetJobReports(limit, offset int, statusFilter string) ([]JobReport, int, error) {
 	var total int
-	if err := DB.QueryRow(`SELECT COUNT(*) FROM job_reports`).Scan(&total); err != nil {
+	queryArgs := []interface{}{}
+	countQuery := `SELECT COUNT(*) FROM job_reports`
+	selectQuery := `SELECT id, file_path, media_type, status, original_size, encoded_size, size_saved, processing_time, target_resolution, ffmpeg_flags, error_message, created_at FROM job_reports`
+	whereClause := ""
+
+	if statusFilter != "" && statusFilter != "all" {
+		if statusFilter == "exclude_skipped" {
+			whereClause = ` WHERE status != 'skipped'`
+		} else {
+			whereClause = ` WHERE status = ?`
+			queryArgs = append(queryArgs, statusFilter)
+		}
+	}
+
+	if err := DB.QueryRow(countQuery+whereClause, queryArgs...).Scan(&total); err != nil {
 		return nil, 0, err
 	}
 
-	rows, err := DB.Query(`SELECT id, file_path, media_type, status, original_size, encoded_size, size_saved, processing_time, target_resolution, ffmpeg_flags, error_message, created_at FROM job_reports ORDER BY created_at DESC LIMIT ? OFFSET ?`, limit, offset)
+	selectQuery += whereClause + ` ORDER BY created_at DESC LIMIT ? OFFSET ?`
+	queryArgs = append(queryArgs, limit, offset)
+
+	rows, err := DB.Query(selectQuery, queryArgs...)
 	if err != nil {
 		return nil, 0, err
 	}

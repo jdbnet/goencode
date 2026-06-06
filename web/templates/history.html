@@ -2,8 +2,17 @@
 <div class="card">
     <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 1rem; margin-bottom: 1rem;">
         <h2 style="margin: 0;">History</h2>
-        <div style="display: flex; align-items: center; gap: 1rem;">
-            <input type="text" id="history-search" class="form-control" placeholder="Search history..." onkeyup="filterHistory()" style="max-width: 300px;">
+        <div style="display: flex; align-items: center; gap: 1rem; flex-wrap: wrap;">
+            <div class="filter-bar">
+                <label for="status-filter" style="font-size: 0.875rem; color: var(--text-secondary);">Status:</label>
+                <select id="status-filter" class="filter-select" onchange="window.location.href='?status=' + this.value">
+                    <option value="all" {{if eq .FilterStatus "all"}}selected{{end}}>All</option>
+                    <option value="exclude_skipped" {{if eq .FilterStatus "exclude_skipped"}}selected{{end}}>Exclude Skipped</option>
+                    <option value="success" {{if eq .FilterStatus "success"}}selected{{end}}>Success Only</option>
+                    <option value="failed" {{if eq .FilterStatus "failed"}}selected{{end}}>Failed Only</option>
+                </select>
+            </div>
+            <input type="text" id="history-search" class="form-control" placeholder="Search page..." onkeyup="filterHistory()" style="max-width: 200px;">
             <span style="color: var(--text-secondary); font-size: 0.875rem; white-space: nowrap;">Total Records: <span id="record-count">{{.Total}}</span></span>
         </div>
     </div>
@@ -45,6 +54,24 @@
                 {{end}}
             </tbody>
         </table>
+    </div>
+    <div class="pagination">
+        <span style="color: var(--text-secondary); font-size: 0.875rem;">
+            Page {{.CurrentPage}} of {{.TotalPages}}
+        </span>
+        <div class="pagination-controls">
+            {{if .HasPrev}}
+            <a href="?page={{.PrevPage}}&status={{.FilterStatus}}" class="page-btn">Previous</a>
+            {{else}}
+            <span class="page-btn disabled">Previous</span>
+            {{end}}
+
+            {{if .HasNext}}
+            <a href="?page={{.NextPage}}&status={{.FilterStatus}}" class="page-btn">Next</a>
+            {{else}}
+            <span class="page-btn disabled">Next</span>
+            {{end}}
+        </div>
     </div>
 </div>
 

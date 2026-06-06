@@ -9,6 +9,7 @@ import (
 	"log"
 	"net/http"
 	"path/filepath"
+	"strconv"
 
 	"goencode/internal/config"
 	"goencode/internal/db"
@@ -254,20 +255,57 @@ func (s *Server) handlePage(tmplName string) http.HandlerFunc {
 }
 
 func (s *Server) handleHistory(w http.ResponseWriter, r *http.Request) {
-	reports, total, err := db.GetJobReports(50, 0) // Basic pagination for now
+	limitStr := r.URL.Query().Get("limit")
+	pageStr := r.URL.Query().Get("page")
+	statusFilter := r.URL.Query().Get("status")
+
+	limit := 50
+	if l, err := strconv.Atoi(limitStr); err == nil && l > 0 {
+		limit = l
+	}
+
+	page := 1
+	if p, err := strconv.Atoi(pageStr); err == nil && p > 0 {
+		page = p
+	}
+
+	offset := (page - 1) * limit
+
+	reports, total, err := db.GetJobReports(limit, offset, statusFilter)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
 	
+	totalPages := (total + limit - 1) / limit
+	if totalPages == 0 {
+		totalPages = 1
+	}
+	
 	data := struct {
-		AuthEnabled bool
-		Reports     []db.JobReport
-		Total       int
+		AuthEnabled  bool
+		Reports      []db.JobReport
+		Total        int
+		CurrentPage  int
+		TotalPages   int
+		HasNext      bool
+		HasPrev      bool
+		PrevPage     int
+		NextPage     int
+		FilterStatus string
+		Limit        int
 	}{
-		AuthEnabled: s.cfg.Auth.Username != "",
-		Reports:     reports,
-		Total:       total,
+		AuthEnabled:  s.cfg.Auth.Username != "",
+		Reports:      reports,
+		Total:        total,
+		CurrentPage:  page,
+		TotalPages:   totalPages,
+		HasNext:      page < totalPages,
+		HasPrev:      page > 1,
+		PrevPage:     page - 1,
+		NextPage:     page + 1,
+		FilterStatus: statusFilter,
+		Limit:        limit,
 	}
 	
 	tmpl, err := template.New("layout").Funcs(template.FuncMap{
