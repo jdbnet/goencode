@@ -55,21 +55,28 @@
             </tbody>
         </table>
     </div>
-    <div class="pagination">
-        <span style="color: var(--text-secondary); font-size: 0.875rem;">
-            Page {{.CurrentPage}} of {{.TotalPages}}
-        </span>
-        <div class="pagination-controls">
+    <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 1rem;">
+        <div>
+            <label for="limit-select" style="color: var(--text-secondary); font-size: 0.875rem; margin-right: 0.5rem;">Rows per page:</label>
+            <select id="limit-select" onchange="window.location.href='?limit=' + this.value + '&status={{.FilterStatus}}'" style="background: var(--surface); color: var(--text-primary); border: 1px solid var(--border); border-radius: 4px; padding: 0.25rem 0.5rem;">
+                <option value="10" {{if eq .Limit 10}}selected{{end}}>10</option>
+                <option value="50" {{if eq .Limit 50}}selected{{end}}>50</option>
+                <option value="100" {{if eq .Limit 100}}selected{{end}}>100</option>
+            </select>
+        </div>
+        <div style="display: flex; gap: 0.5rem; align-items: center;">
             {{if .HasPrev}}
-            <a href="?page={{.PrevPage}}&status={{.FilterStatus}}" class="page-btn">Previous</a>
+            <a href="?page={{.PrevPage}}&limit={{.Limit}}&status={{.FilterStatus}}" class="btn btn-sm btn-outline" style="text-decoration: none;">Previous</a>
             {{else}}
-            <span class="page-btn disabled">Previous</span>
+            <button class="btn btn-sm btn-outline" disabled>Previous</button>
             {{end}}
 
+            <span style="color: var(--text-secondary); font-size: 0.875rem;">Page {{.CurrentPage}} of {{.TotalPages}}</span>
+
             {{if .HasNext}}
-            <a href="?page={{.NextPage}}&status={{.FilterStatus}}" class="page-btn">Next</a>
+            <a href="?page={{.NextPage}}&limit={{.Limit}}&status={{.FilterStatus}}" class="btn btn-sm btn-outline" style="text-decoration: none;">Next</a>
             {{else}}
-            <span class="page-btn disabled">Next</span>
+            <button class="btn btn-sm btn-outline" disabled>Next</button>
             {{end}}
         </div>
     </div>

@@ -33,15 +33,50 @@
             </tbody>
         </table>
     </div>
+    <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 1rem;">
+        <div>
+            <label for="limit-select" style="color: var(--text-secondary); font-size: 0.875rem; margin-right: 0.5rem;">Rows per page:</label>
+            <select id="limit-select" onchange="changeLimit()" style="background: var(--surface); color: var(--text-primary); border: 1px solid var(--border); border-radius: 4px; padding: 0.25rem 0.5rem;">
+                <option value="10">10</option>
+                <option value="50">50</option>
+                <option value="100">100</option>
+            </select>
+        </div>
+        <div style="display: flex; gap: 0.5rem; align-items: center;">
+            <button id="prev-page" class="btn btn-sm btn-outline" onclick="changePage(-1)">Previous</button>
+            <span id="page-info" style="color: var(--text-secondary); font-size: 0.875rem;">Page 1 of 1</span>
+            <button id="next-page" class="btn btn-sm btn-outline" onclick="changePage(1)">Next</button>
+        </div>
+    </div>
 </div>
 
 <script>
     const queueBody = document.getElementById('queue-body');
+    let currentPage = 1;
+    let currentLimit = 10;
 
     async function loadQueue() {
-        const res = await fetch('/api/queue');
-        const jobs = await res.json();
-        renderQueue(jobs || []);
+        const res = await fetch(`/api/queue?page=${currentPage}&limit=${currentLimit}`);
+        const data = await res.json();
+        
+        renderQueue(data.jobs || []);
+        
+        document.getElementById('page-info').innerText = `Page ${data.page} of ${data.totalPages}`;
+        document.getElementById('prev-page').disabled = data.page <= 1;
+        document.getElementById('next-page').disabled = data.page >= data.totalPages;
+        
+        currentPage = data.page;
+    }
+
+    function changeLimit() {
+        currentLimit = document.getElementById('limit-select').value;
+        currentPage = 1;
+        loadQueue();
+    }
+    
+    function changePage(delta) {
+        currentPage += delta;
+        loadQueue();
     }
 
     function renderQueue(jobs) {

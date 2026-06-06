@@ -79,6 +79,33 @@ func GetPendingJobs() ([]Job, error) {
 	return jobs, nil
 }
 
+func GetJobsPaginated(limit, offset int) ([]Job, int, error) {
+	var total int
+	if err := DB.QueryRow(`SELECT COUNT(*) FROM jobs`).Scan(&total); err != nil {
+		return nil, 0, err
+	}
+
+	rows, err := DB.Query(`SELECT id, file_path, media_type, status, priority, original_size, target_resolution, ffmpeg_flags, error_message, created_at, updated_at FROM jobs ORDER BY priority DESC, created_at ASC LIMIT ? OFFSET ?`, limit, offset)
+	if err != nil {
+		return nil, 0, err
+	}
+	defer rows.Close()
+
+	var jobs []Job
+	for rows.Next() {
+		var j Job
+		var targetRes, ffmpegFlags, errMsg sql.NullString
+		if err := rows.Scan(&j.ID, &j.FilePath, &j.MediaType, &j.Status, &j.Priority, &j.OriginalSize, &targetRes, &ffmpegFlags, &errMsg, &j.CreatedAt, &j.UpdatedAt); err != nil {
+			return nil, 0, err
+		}
+		if targetRes.Valid { j.TargetResolution = targetRes.String }
+		if ffmpegFlags.Valid { j.FFmpegFlags = ffmpegFlags.String }
+		if errMsg.Valid { j.ErrorMessage = errMsg.String }
+		jobs = append(jobs, j)
+	}
+	return jobs, total, nil
+}
+
 func UpdateJobStatus(id int, status, errMsg string) error {
 	_, err := DB.Exec(`UPDATE jobs SET status = ?, error_message = ? WHERE id = ?`, status, nullStr(errMsg), id)
 	return err

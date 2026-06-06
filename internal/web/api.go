@@ -10,13 +10,42 @@ import (
 )
 
 func (s *Server) handleGetQueue(w http.ResponseWriter, r *http.Request) {
-	jobs, err := db.GetPendingJobs()
+	limitStr := r.URL.Query().Get("limit")
+	pageStr := r.URL.Query().Get("page")
+
+	limit := 10
+	if l, err := strconv.Atoi(limitStr); err == nil && l > 0 {
+		limit = l
+	}
+
+	page := 1
+	if p, err := strconv.Atoi(pageStr); err == nil && p > 0 {
+		page = p
+	}
+
+	offset := (page - 1) * limit
+
+	jobs, total, err := db.GetJobsPaginated(limit, offset)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
+	
+	totalPages := (total + limit - 1) / limit
+	if totalPages == 0 {
+		totalPages = 1
+	}
+
+	response := map[string]interface{}{
+		"jobs":       jobs,
+		"total":      total,
+		"page":       page,
+		"totalPages": totalPages,
+		"limit":      limit,
+	}
+
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(jobs)
+	json.NewEncoder(w).Encode(response)
 }
 
 func (s *Server) handleBumpJob(w http.ResponseWriter, r *http.Request) {
