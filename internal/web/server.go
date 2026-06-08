@@ -209,6 +209,28 @@ func formatBytes(bytes int64) string {
 	return fmt.Sprintf("%.1f %cB", float64(bytes)/float64(div), "KMGTPE"[exp])
 }
 
+func formatDuration(seconds float64) string {
+	if seconds <= 0 {
+		return "0s"
+	}
+	
+	totalSecs := int64(seconds)
+	hours := totalSecs / 3600
+	minutes := (totalSecs % 3600) / 60
+	secs := totalSecs % 60
+	
+	if hours > 0 {
+		return fmt.Sprintf("%dh %dm %ds", hours, minutes, secs)
+	}
+	if minutes > 0 {
+		return fmt.Sprintf("%dm %ds", minutes, secs)
+	}
+	if seconds < 1.0 {
+		return fmt.Sprintf("%.2fs", seconds)
+	}
+	return fmt.Sprintf("%.1fs", seconds)
+}
+
 func (s *Server) handleDashboard(w http.ResponseWriter, r *http.Request) {
 	if r.URL.Path != "/" {
 		http.NotFound(w, r)
@@ -309,7 +331,8 @@ func (s *Server) handleHistory(w http.ResponseWriter, r *http.Request) {
 	}
 	
 	tmpl, err := template.New("layout").Funcs(template.FuncMap{
-		"formatBytes": formatBytes,
+		"formatBytes":    formatBytes,
+		"formatDuration": formatDuration,
 	}).ParseFS(rootweb.FS, "templates/layout.html", "templates/history.html")
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)

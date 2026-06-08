@@ -44,7 +44,7 @@
                     <td>{{formatBytes .OriginalSize}}</td>
                     <td>{{formatBytes .EncodedSize}}</td>
                     <td style="color: var(--accent);">{{formatBytes .SizeSaved}}</td>
-                    <td>{{.ProcessingTime}}s</td>
+                    <td>{{formatDuration .ProcessingTime}}</td>
                     <td>{{.CreatedAt.Format "Jan 02, 15:04:05"}}</td>
                 </tr>
                 {{else}}
