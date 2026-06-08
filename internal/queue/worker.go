@@ -197,10 +197,6 @@ func (m *Manager) runEncoder(job db.Job) error {
 
 	scanner := bufio.NewScanner(stderr)
 	scanner.Split(bufio.ScanLines)
-	// Some ffmpeg progress output uses carriage returns instead of newlines
-	// We handle standard lines, to get a more robust carriage return split, we could implement a custom split function.
-	// For simplicity, ScanLines usually catches 'time=' lines well enough if they have \n.
-	// Let's use a custom split to handle '\r' as well.
 	scanner.Split(func(data []byte, atEOF bool) (advance int, token []byte, err error) {
 		if atEOF && len(data) == 0 {
 			return 0, nil, nil
