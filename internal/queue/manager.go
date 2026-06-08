@@ -14,18 +14,20 @@ type Manager struct {
 	TriggerChan  chan struct{}
 	StopChan     chan struct{}
 	Broadcast    func(string, interface{})
+	WebhookURL   string
 	encoder      *encoder.FFmpegManager
 	isProcessing bool
 	mu           sync.Mutex
 }
 
-func NewManager(ffmpegPath, tempDir string, broadcast func(string, interface{})) *Manager {
+func NewManager(ffmpegPath, tempDir, webhookURL string, broadcast func(string, interface{})) *Manager {
 	return &Manager{
 		FFmpegPath:  ffmpegPath,
 		TempDir:     tempDir,
 		TriggerChan: make(chan struct{}, 1),
 		StopChan:    make(chan struct{}),
 		Broadcast:   broadcast,
+		WebhookURL:  webhookURL,
 		encoder:     encoder.NewManager(ffmpegPath),
 	}
 }

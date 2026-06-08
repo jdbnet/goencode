@@ -52,12 +52,17 @@ type AuthConfig struct {
 	Password string `yaml:"password"`
 }
 
+type NotificationsConfig struct {
+	WebhookURL string `yaml:"webhook_url"`
+}
+
 type Config struct {
 	Server   ServerConfig   `yaml:"server"`
 	Auth     AuthConfig     `yaml:"auth"`
 	Database DatabaseConfig `yaml:"database"`
-	Encoder  EncoderConfig  `yaml:"encoder"`
-	Logging  LoggingConfig  `yaml:"logging"`
+	Encoder       EncoderConfig       `yaml:"encoder"`
+	Logging       LoggingConfig       `yaml:"logging"`
+	Notifications NotificationsConfig `yaml:"notifications"`
 }
 
 func LoadConfig(path string) (*Config, error) {
@@ -84,6 +89,7 @@ func LoadConfig(path string) (*Config, error) {
 	cfg.Encoder.FFmpegPath = getEnvStr("GOENCODE_FFMPEG_PATH", cfg.Encoder.FFmpegPath)
 	cfg.Encoder.TempDir = getEnvStr("GOENCODE_ENCODER_TEMP", cfg.Encoder.TempDir)
 	cfg.Logging.Level = getEnvStr("GOENCODE_LOG_LEVEL", cfg.Logging.Level)
+	cfg.Notifications.WebhookURL = getEnvStr("GOENCODE_WEBHOOK_URL", cfg.Notifications.WebhookURL)
 
 	// Defaults if missing entirely
 	if cfg.Server.Port == 0 {

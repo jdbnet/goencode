@@ -13,6 +13,7 @@ import (
 
 	"goencode/internal/db"
 	"goencode/internal/encoder"
+	"goencode/internal/notify"
 	"io"
 )
 
@@ -98,6 +99,9 @@ func (m *Manager) processNextJob() {
 		db.AddJobReport(job, "failed", 0, 0, 0)
 		db.DeleteJob(job.ID)
 		m.NotifySSE("job_failed", map[string]interface{}{"id": job.ID, "error": err.Error()})
+		if m.WebhookURL != "" {
+			notify.SendWebhook(m.WebhookURL, "Encoding Job Failed", fmt.Sprintf("File: %s\nError: %s", job.FilePath, err.Error()))
+		}
 	} else {
 		log.Printf("Job %d succeeded", job.ID)
 		db.DeleteJob(job.ID)

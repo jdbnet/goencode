@@ -15,6 +15,7 @@ GoEncode is a lightweight, high-performance media transcoding server written in 
 - **Format Intelligence**: Probes media to detect codecs and resolution, automatically skipping files that already meet the target codec/resolution.
 - **Web Dashboard**: Modern, responsive interface with Server-Sent Events (SSE) for live tracking of job progress, queue stats, and server logs.
 - **Robust Persistence**: Job history, metrics (size saved, time taken), and configuration are all saved to a MariaDB/MySQL database.
+- **Webhook Notifications**: Optional integration to send a JSON webhook payload when an encoding job fails.
 - **Docker-Ready**: Packaged in an ultra-slim container image based on Debian, with `ffmpeg` built-in.
 
 ## Deployment with Docker
@@ -51,6 +52,9 @@ services:
       # Web UI Authentication (Optional)
       - GOENCODE_AUTH_USER=admin
       - GOENCODE_AUTH_PASS=secret
+      
+      # Notifications (Optional)
+      - GOENCODE_WEBHOOK_URL=http://your-webhook-endpoint.com/webhook
       
       # Encoding
       - GOENCODE_ENCODER_TEMP=/tmp/goencode
@@ -93,6 +97,7 @@ GoEncode can be configured via `goencode.yaml` or entirely via environment varia
 | `TZ` | Container TimeZone | `UTC` |
 | `GOENCODE_AUTH_USER` | Username for the web UI | |
 | `GOENCODE_AUTH_PASS` | Password for the web UI | |
+| `GOENCODE_WEBHOOK_URL` | Webhook URL for job failure notifications | |
 | `GOENCODE_ENCODER_TEMP`| Temp directory for processing jobs | `/tmp/goencode` |
 
 ## Building Locally
