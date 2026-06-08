@@ -81,25 +81,28 @@ func (m *Manager) processNextJob() {
 	job := jobs[0]
 	log.Printf("Starting job %d for %s", job.ID, job.FilePath)
 	
-	m.NotifySSE("job_started", job)
-
 	err = db.UpdateJobStatus(job.ID, "processing", "")
 	if err != nil {
 		log.Printf("Failed to update job status: %v", err)
 		return
 	}
 
+	job.Status = "processing"
+	job.UpdatedAt = time.Now()
+	m.NotifySSE("job_started", job)
+
 	err = m.runEncoder(job)
 	if err != nil {
 		log.Printf("Job %d failed: %v", job.ID, err)
 		db.UpdateJobStatus(job.ID, "failed", err.Error())
 		db.AddJobReport(job, "failed", 0, 0, 0)
+		db.DeleteJob(job.ID)
 		m.NotifySSE("job_failed", map[string]interface{}{"id": job.ID, "error": err.Error()})
 	} else {
 		log.Printf("Job %d succeeded", job.ID)
+		db.DeleteJob(job.ID)
 		m.NotifySSE("job_completed", map[string]interface{}{"id": job.ID})
 	}
-	db.DeleteJob(job.ID)
 }
 
 func (m *Manager) runEncoder(job db.Job) error {
