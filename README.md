@@ -37,27 +37,20 @@ services:
     ports:
       - "8080:8080"
     environment:
-      # Database Configuration
       - GOENCODE_DB_HOST=db
       - GOENCODE_DB_PORT=3306
       - GOENCODE_DB_USER=goencode
       - GOENCODE_DB_PASS=goencode_password
       - GOENCODE_DB_NAME=goencode
-      
-      # Web Server Configuration
       - GOENCODE_SERVER_LISTEN=0.0.0.0
       - GOENCODE_SERVER_PORT=8080
+      - GOENCODE_ENCODER_TEMP=/tmp/goencode
       - TZ=Europe/London
-      
       # Web UI Authentication (Optional)
       - GOENCODE_AUTH_USER=admin
       - GOENCODE_AUTH_PASS=secret
-      
       # Notifications (Optional)
       - GOENCODE_WEBHOOK_URL=http://your-webhook-endpoint.com/webhook
-      
-      # Encoding
-      - GOENCODE_ENCODER_TEMP=/tmp/goencode
     volumes:
       - /path/to/your/media:/media
     depends_on:
@@ -79,6 +72,14 @@ volumes:
   goencode_db_data:
 ```
 
+## Deployment with Binary
+
+We also build the binary for Linux AMD64 which you can download from [https://apps.jdbnet.co.uk/goencode](https://apps.jdbnet.co.uk/goencode)
+
+You'll need to make sure ```ffmpeg``` and ```gzip``` are available on your system
+
+You'll also need to create the config file at ```/etc/goencode/goencode.yaml```. You can copy and edit the example [here](goencode.yaml)
+
 ## Configuration
 
 GoEncode can be configured via `goencode.yaml` or entirely via environment variables (ideal for Docker/Kubernetes). Environment variables take precedence over the YAML file.
@@ -99,15 +100,3 @@ GoEncode can be configured via `goencode.yaml` or entirely via environment varia
 | `GOENCODE_AUTH_PASS` | Password for the web UI | |
 | `GOENCODE_WEBHOOK_URL` | Webhook URL for job failure notifications | |
 | `GOENCODE_ENCODER_TEMP`| Temp directory for processing jobs | `/tmp/goencode` |
-
-## Building Locally
-
-To build the Docker image locally and push it to your registry:
-
-```bash
-# Build the image
-docker build -t cr.jdbnet.co.uk/public/goencode:latest .
-
-# Push to your registry
-docker push cr.jdbnet.co.uk/public/goencode:latest
-```
