@@ -55,6 +55,26 @@
     let currentPage = 1;
     let currentLimit = 10;
 
+    function formatElapsed(ms) {
+        const totalSecs = Math.floor(ms / 1000);
+        if (totalSecs < 0) return '0s';
+        
+        const hours = Math.floor(totalSecs / 3600);
+        const minutes = Math.floor((totalSecs % 3600) / 60);
+        const seconds = totalSecs % 60;
+        
+        let parts = [];
+        if (hours > 0) {
+            parts.push(`${hours}h`);
+        }
+        if (minutes > 0 || hours > 0) {
+            parts.push(`${minutes}m`);
+        }
+        parts.push(`${seconds}s`);
+        
+        return parts.join(' ');
+    }
+
     async function loadQueue() {
         const res = await fetch(`/api/queue?page=${currentPage}&limit=${currentLimit}`);
         const data = await res.json();
@@ -85,11 +105,16 @@
             
             let progressHtml = '';
             if (job.status === 'processing') {
+                const elapsedMs = Date.now() - new Date(job.updated_at).getTime();
+                const formatted = formatElapsed(elapsedMs);
                 progressHtml = `
                     <div class="progress-bar">
                         <div class="progress-fill" id="progress-${job.id}" style="width: 0%"></div>
                     </div>
-                    <div style="font-size: 0.75rem; color: var(--text-secondary); margin-top: 0.25rem;" id="progress-text-${job.id}">0%</div>
+                    <div style="display: flex; justify-content: space-between; font-size: 0.75rem; color: var(--text-secondary); margin-top: 0.25rem;">
+                        <span id="progress-text-${job.id}">0%</span>
+                        <span id="progress-elapsed-${job.id}" class="progress-elapsed" data-start-time="${job.updated_at}">Elapsed: ${formatted}</span>
+                    </div>
                 `;
             }
 
@@ -155,6 +180,18 @@
             text.innerText = `${data.progress}%`;
         }
     });
+
+    // Update elapsed times periodically
+    setInterval(() => {
+        document.querySelectorAll('.progress-elapsed').forEach(el => {
+            const startTimeStr = el.getAttribute('data-start-time');
+            if (startTimeStr) {
+                const startTime = new Date(startTimeStr).getTime();
+                const elapsedMs = Date.now() - startTime;
+                el.innerText = `Elapsed: ${formatElapsed(elapsedMs)}`;
+            }
+        });
+    }, 1000);
 
     // Initial load
     loadQueue();
