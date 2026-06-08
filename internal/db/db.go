@@ -13,7 +13,7 @@ import (
 var DB *sql.DB
 
 func Init(cfg *config.DatabaseConfig) error {
-	dsn := fmt.Sprintf("%s:%s@tcp(%s:%d)/%s?parseTime=true",
+	dsn := fmt.Sprintf("%s:%s@tcp(%s:%d)/%s?parseTime=true&loc=Local",
 		cfg.User, cfg.Password, cfg.Host, cfg.Port, cfg.Name)
 
 	var err error
