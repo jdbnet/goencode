@@ -130,3 +130,39 @@ func (s *Server) handleDeleteWatchFolder(w http.ResponseWriter, r *http.Request)
 	s.wm.Reload()
 	w.WriteHeader(http.StatusOK)
 }
+
+func (s *Server) handleRequeueJob(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	id, err := strconv.Atoi(strings.TrimPrefix(r.URL.Path, "/api/jobs/requeue/"))
+	if err != nil {
+		http.Error(w, "Invalid ID", http.StatusBadRequest)
+		return
+	}
+	
+	report, err := db.GetJobReportByID(id)
+	if err != nil {
+		http.Error(w, "Job report not found", http.StatusNotFound)
+		return
+	}
+	
+	if report.Status != "failed" {
+		http.Error(w, "Can only requeue failed jobs", http.StatusBadRequest)
+		return
+	}
+	
+	err = db.AddJob(report.FilePath, report.MediaType, 5, report.TargetResolution, report.FFmpegFlags, report.OriginalSize)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	
+	// Delete the failed report so it doesn't show up in history as failed anymore
+	_ = db.DeleteJobReport(id)
+	
+	s.qm.NotifySSE("queue_updated", nil)
+	s.qm.NotifySSE("job_added", nil)
+	w.WriteHeader(http.StatusOK)
+}

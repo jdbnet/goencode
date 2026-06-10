@@ -28,6 +28,7 @@
                     <th>Saved</th>
                     <th>Time</th>
                     <th>Date</th>
+                    <th>Actions</th>
                 </tr>
             </thead>
             <tbody>
@@ -46,10 +47,15 @@
                     <td style="color: var(--accent);">{{formatBytes .SizeSaved}}</td>
                     <td>{{formatDuration .ProcessingTime}}</td>
                     <td>{{.CreatedAt.Format "Jan 02, 15:04:05"}}</td>
+                    <td>
+                        {{if eq .Status "failed"}}
+                        <button class="btn btn-sm btn-outline" onclick="requeueJob({{.ID}})">Requeue</button>
+                        {{end}}
+                    </td>
                 </tr>
                 {{else}}
                 <tr>
-                    <td colspan="8" style="text-align: center; color: var(--text-secondary);">No job reports found.</td>
+                    <td colspan="9" style="text-align: center; color: var(--text-secondary);">No job reports found.</td>
                 </tr>
                 {{end}}
             </tbody>
@@ -109,6 +115,20 @@ function filterHistory() {
     
     // Update the record count
     document.getElementById("record-count").textContent = filter ? visibleCount : "{{.Total}}";
+}
+
+async function requeueJob(id) {
+    if (!confirm("Requeue this failed job?")) return;
+    try {
+        const res = await fetch('/api/jobs/requeue/' + id, { method: 'POST' });
+        if (res.ok) {
+            window.location.reload();
+        } else {
+            alert("Failed to requeue job: " + await res.text());
+        }
+    } catch (e) {
+        alert("Error: " + e.message);
+    }
 }
 </script>
 {{end}}

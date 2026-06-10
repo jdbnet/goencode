@@ -195,6 +195,25 @@ func GetJobReports(limit, offset int, statusFilter string) ([]JobReport, int, er
 	return reports, total, nil
 }
 
+func GetJobReportByID(id int) (JobReport, error) {
+	var r JobReport
+	var targetRes, ffmpegFlags, errMsg sql.NullString
+	err := DB.QueryRow(`SELECT id, file_path, media_type, status, original_size, encoded_size, size_saved, processing_time, target_resolution, ffmpeg_flags, error_message, created_at FROM job_reports WHERE id = ?`, id).
+		Scan(&r.ID, &r.FilePath, &r.MediaType, &r.Status, &r.OriginalSize, &r.EncodedSize, &r.SizeSaved, &r.ProcessingTime, &targetRes, &ffmpegFlags, &errMsg, &r.CreatedAt)
+	if err != nil {
+		return r, err
+	}
+	if targetRes.Valid { r.TargetResolution = targetRes.String }
+	if ffmpegFlags.Valid { r.FFmpegFlags = ffmpegFlags.String }
+	if errMsg.Valid { r.ErrorMessage = errMsg.String }
+	return r, nil
+}
+
+func DeleteJobReport(id int) error {
+	_, err := DB.Exec(`DELETE FROM job_reports WHERE id = ?`, id)
+	return err
+}
+
 type DashboardStats struct {
 	TotalSavedSpace int64
 	FilesEncoded    int

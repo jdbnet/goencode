@@ -132,6 +132,7 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("/api/status", s.handleStatus)
 	s.mux.HandleFunc("/api/jobs/bump/", s.handleBumpJob)
 	s.mux.HandleFunc("/api/jobs/cancel/", s.handleCancelJob)
+	s.mux.HandleFunc("/api/jobs/requeue/", s.handleRequeueJob)
 	
 	s.mux.HandleFunc("/api/folders", s.handleGetWatchFolders)
 	s.mux.HandleFunc("/api/folders/add", s.handleAddWatchFolder)
