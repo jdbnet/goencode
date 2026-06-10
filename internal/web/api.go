@@ -104,6 +104,7 @@ func (s *Server) handleAddWatchFolder(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
+	f.FolderPath = strings.TrimSpace(f.FolderPath)
 	f.Enabled = true
 	if err := db.AddWatchFolder(f); err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)

@@ -78,6 +78,7 @@ func (m *Manager) Reload() {
 		// Walk the directory to add all subdirectories to watcher and scan existing files
 		filepath.Walk(f.FolderPath, func(path string, info os.FileInfo, err error) error {
 			if err != nil {
+				log.Printf("Error accessing path %s during scan: %v", path, err)
 				return nil
 			}
 			if info.IsDir() {
@@ -198,8 +199,18 @@ func (m *Manager) processFile(filePath string) {
 		}
 		// Check if filePath is inside f.FolderPath
 		cleanPath := filepath.Clean(filePath)
-		folderPath := filepath.Clean(f.FolderPath)
-		if strings.HasPrefix(cleanPath, folderPath+string(os.PathSeparator)) || cleanPath == folderPath || filepath.Dir(cleanPath) == folderPath {
+		folderPath := filepath.Clean(strings.TrimSpace(f.FolderPath))
+		
+		var isMatch bool
+		if cleanPath == folderPath {
+			isMatch = true
+		} else if folderPath == string(os.PathSeparator) {
+			isMatch = strings.HasPrefix(cleanPath, folderPath)
+		} else {
+			isMatch = strings.HasPrefix(cleanPath, folderPath+string(os.PathSeparator))
+		}
+		
+		if isMatch {
 			match = f
 			found = true
 			break
