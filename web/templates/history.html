@@ -5,11 +5,20 @@
         <div style="display: flex; align-items: center; gap: 1rem; flex-wrap: wrap;">
             <div class="filter-bar">
                 <label for="status-filter" style="font-size: 0.875rem; color: var(--text-secondary);">Status:</label>
-                <select id="status-filter" class="filter-select" onchange="window.location.href='?status=' + this.value">
+                <select id="status-filter" class="filter-select" onchange="updateFilter('status', this.value)">
                     <option value="all" {{if eq .FilterStatus "all"}}selected{{end}}>All</option>
                     <option value="exclude_skipped" {{if eq .FilterStatus "exclude_skipped"}}selected{{end}}>Exclude Skipped</option>
                     <option value="success" {{if eq .FilterStatus "success"}}selected{{end}}>Success Only</option>
                     <option value="failed" {{if eq .FilterStatus "failed"}}selected{{end}}>Failed Only</option>
+                </select>
+                
+                <label for="folder-filter" style="font-size: 0.875rem; color: var(--text-secondary); margin-left: 0.5rem;">Folder:</label>
+                <select id="folder-filter" class="filter-select" onchange="updateFilter('folder', this.value)">
+                    <option value="0" {{if eq .FilterFolder 0}}selected{{end}}>All Folders</option>
+                    {{$filterFolder := .FilterFolder}}
+                    {{range .Folders}}
+                    <option value="{{.ID}}" {{if eq $filterFolder .ID}}selected{{end}}>{{.FolderPath}}</option>
+                    {{end}}
                 </select>
             </div>
             <input type="text" id="history-search" class="form-control" placeholder="Search page..." onkeyup="filterHistory()" style="max-width: 200px;">
@@ -64,7 +73,7 @@
     <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 1rem;">
         <div>
             <label for="limit-select" style="color: var(--text-secondary); font-size: 0.875rem; margin-right: 0.5rem;">Rows per page:</label>
-            <select id="limit-select" onchange="window.location.href='?limit=' + this.value + '&status={{.FilterStatus}}'" style="background: var(--surface); color: var(--text-primary); border: 1px solid var(--border); border-radius: 4px; padding: 0.25rem 0.5rem;">
+            <select id="limit-select" onchange="updateFilter('limit', this.value)" style="background: var(--surface); color: var(--text-primary); border: 1px solid var(--border); border-radius: 4px; padding: 0.25rem 0.5rem;">
                 <option value="10" {{if eq .Limit 10}}selected{{end}}>10</option>
                 <option value="50" {{if eq .Limit 50}}selected{{end}}>50</option>
                 <option value="100" {{if eq .Limit 100}}selected{{end}}>100</option>
@@ -72,7 +81,7 @@
         </div>
         <div style="display: flex; gap: 0.5rem; align-items: center;">
             {{if .HasPrev}}
-            <a href="?page={{.PrevPage}}&limit={{.Limit}}&status={{.FilterStatus}}" class="btn btn-sm btn-outline" style="text-decoration: none;">Previous</a>
+            <a href="?page={{.PrevPage}}&limit={{.Limit}}&status={{.FilterStatus}}&folder={{.FilterFolder}}" class="btn btn-sm btn-outline" style="text-decoration: none;">Previous</a>
             {{else}}
             <button class="btn btn-sm btn-outline" disabled>Previous</button>
             {{end}}
@@ -80,7 +89,7 @@
             <span style="color: var(--text-secondary); font-size: 0.875rem;">Page {{.CurrentPage}} of {{.TotalPages}}</span>
 
             {{if .HasNext}}
-            <a href="?page={{.NextPage}}&limit={{.Limit}}&status={{.FilterStatus}}" class="btn btn-sm btn-outline" style="text-decoration: none;">Next</a>
+            <a href="?page={{.NextPage}}&limit={{.Limit}}&status={{.FilterStatus}}&folder={{.FilterFolder}}" class="btn btn-sm btn-outline" style="text-decoration: none;">Next</a>
             {{else}}
             <button class="btn btn-sm btn-outline" disabled>Next</button>
             {{end}}
@@ -89,6 +98,15 @@
 </div>
 
 <script>
+function updateFilter(key, value) {
+    const url = new URL(window.location.href);
+    url.searchParams.set(key, value);
+    if (key !== 'limit' && key !== 'page') {
+        url.searchParams.set('page', '1');
+    }
+    window.location.href = url.toString();
+}
+
 function filterHistory() {
     var input, filter, table, tr, td, i, txtValue;
     input = document.getElementById("history-search");

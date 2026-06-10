@@ -2,6 +2,7 @@ package db
 
 import (
 	"database/sql"
+	"strings"
 )
 
 // Watch Folders
@@ -151,20 +152,31 @@ func AddJobReport(j Job, status string, encodedSize int64, sizeSaved int64, proc
 	return err
 }
 
-func GetJobReports(limit, offset int, statusFilter string) ([]JobReport, int, error) {
+func GetJobReports(limit, offset int, statusFilter string, folderFilter string) ([]JobReport, int, error) {
 	var total int
 	queryArgs := []interface{}{}
 	countQuery := `SELECT COUNT(*) FROM job_reports`
 	selectQuery := `SELECT id, file_path, media_type, status, original_size, encoded_size, size_saved, processing_time, target_resolution, ffmpeg_flags, error_message, created_at FROM job_reports`
-	whereClause := ""
+	
+	whereClauses := []string{}
 
 	if statusFilter != "" && statusFilter != "all" {
 		if statusFilter == "exclude_skipped" {
-			whereClause = ` WHERE status != 'skipped'`
+			whereClauses = append(whereClauses, `status != 'skipped'`)
 		} else {
-			whereClause = ` WHERE status = ?`
+			whereClauses = append(whereClauses, `status = ?`)
 			queryArgs = append(queryArgs, statusFilter)
 		}
+	}
+	
+	if folderFilter != "" && folderFilter != "all" {
+		whereClauses = append(whereClauses, `(file_path LIKE ? OR file_path = ?)`)
+		queryArgs = append(queryArgs, folderFilter+"/%", folderFilter)
+	}
+
+	whereClause := ""
+	if len(whereClauses) > 0 {
+		whereClause = " WHERE " + strings.Join(whereClauses, " AND ")
 	}
 
 	if err := DB.QueryRow(countQuery+whereClause, queryArgs...).Scan(&total); err != nil {

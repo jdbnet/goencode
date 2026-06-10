@@ -281,6 +281,7 @@ func (s *Server) handleHistory(w http.ResponseWriter, r *http.Request) {
 	limitStr := r.URL.Query().Get("limit")
 	pageStr := r.URL.Query().Get("page")
 	statusFilter := r.URL.Query().Get("status")
+	folderFilterIDStr := r.URL.Query().Get("folder")
 
 	limit := 50
 	if l, err := strconv.Atoi(limitStr); err == nil && l > 0 {
@@ -294,7 +295,21 @@ func (s *Server) handleHistory(w http.ResponseWriter, r *http.Request) {
 
 	offset := (page - 1) * limit
 
-	reports, total, err := db.GetJobReports(limit, offset, statusFilter)
+	folders, _ := db.GetWatchFolders()
+	
+	folderFilterPath := ""
+	folderFilterID := 0
+	if fID, err := strconv.Atoi(folderFilterIDStr); err == nil && fID > 0 {
+		folderFilterID = fID
+		for _, f := range folders {
+			if f.ID == fID {
+				folderFilterPath = f.FolderPath
+				break
+			}
+		}
+	}
+
+	reports, total, err := db.GetJobReports(limit, offset, statusFilter, folderFilterPath)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
@@ -316,6 +331,8 @@ func (s *Server) handleHistory(w http.ResponseWriter, r *http.Request) {
 		PrevPage     int
 		NextPage     int
 		FilterStatus string
+		FilterFolder int
+		Folders      []db.WatchFolder
 		Limit        int
 	}{
 		AuthEnabled:  s.cfg.Auth.Username != "",
@@ -328,6 +345,8 @@ func (s *Server) handleHistory(w http.ResponseWriter, r *http.Request) {
 		PrevPage:     page - 1,
 		NextPage:     page + 1,
 		FilterStatus: statusFilter,
+		FilterFolder: folderFilterID,
+		Folders:      folders,
 		Limit:        limit,
 	}
 	
