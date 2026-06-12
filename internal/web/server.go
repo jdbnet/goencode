@@ -26,9 +26,10 @@ type Server struct {
 	sse *SSEServer
 	mux *http.ServeMux
 	sessionToken string
+	version string
 }
 
-func NewServer(cfg *config.Config, qm *queue.Manager, wm *watcher.Manager, sse *SSEServer) *Server {
+func NewServer(cfg *config.Config, qm *queue.Manager, wm *watcher.Manager, sse *SSEServer, version string) *Server {
 	b := make([]byte, 32)
 	rand.Read(b)
 	token := hex.EncodeToString(b)
@@ -40,6 +41,7 @@ func NewServer(cfg *config.Config, qm *queue.Manager, wm *watcher.Manager, sse *
 		sse:          sse,
 		mux:          http.NewServeMux(),
 		sessionToken: token,
+		version:      version,
 	}
 	s.routes()
 	return s
@@ -246,11 +248,13 @@ func (s *Server) handleDashboard(w http.ResponseWriter, r *http.Request) {
 		FilesEncoded    int
 		QueueLength     int
 		SavedSpace      string
+		Version         string
 	}{
 		AuthEnabled:  s.cfg.Auth.Username != "",
 		FilesEncoded: stats.FilesEncoded,
 		QueueLength:  stats.QueueLength,
 		SavedSpace:   formatBytes(stats.TotalSavedSpace),
+		Version:      s.version,
 	}
 
 	tmpl, err := template.New("layout").Funcs(template.FuncMap{
@@ -270,7 +274,13 @@ func (s *Server) handlePage(tmplName string) http.HandlerFunc {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
 		}
-		data := struct{ AuthEnabled bool }{AuthEnabled: s.cfg.Auth.Username != ""}
+		data := struct {
+			AuthEnabled bool
+			Version     string
+		}{
+			AuthEnabled: s.cfg.Auth.Username != "",
+			Version:     s.version,
+		}
 		if err := tmpl.ExecuteTemplate(w, "layout", data); err != nil {
 			log.Printf("Template execution error: %v", err)
 		}
@@ -334,6 +344,7 @@ func (s *Server) handleHistory(w http.ResponseWriter, r *http.Request) {
 		FilterFolder int
 		Folders      []db.WatchFolder
 		Limit        int
+		Version      string
 	}{
 		AuthEnabled:  s.cfg.Auth.Username != "",
 		Reports:      reports,
@@ -348,6 +359,7 @@ func (s *Server) handleHistory(w http.ResponseWriter, r *http.Request) {
 		FilterFolder: folderFilterID,
 		Folders:      folders,
 		Limit:        limit,
+		Version:      s.version,
 	}
 	
 	tmpl, err := template.New("layout").Funcs(template.FuncMap{

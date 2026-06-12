@@ -15,6 +15,8 @@ import (
 	"goencode/internal/web"
 )
 
+var Version string = "dev"
+
 func main() {
 	configPath := flag.String("config", "goencode.yaml", "Path to configuration file")
 	flag.Parse()
@@ -44,10 +46,10 @@ func main() {
 	wm.Start()
 	defer wm.Stop()
 
-	server := web.NewServer(cfg, qm, wm, sseServer)
+	server := web.NewServer(cfg, qm, wm, sseServer, Version)
 	
 	go func() {
-		log.Printf("Starting GoEncode Web UI on %s:%d", cfg.Server.ListenAddr, cfg.Server.Port)
+		log.Printf("Starting GoEncode Web UI (v%s) on %s:%d", Version, cfg.Server.ListenAddr, cfg.Server.Port)
 		if err := server.Start(); err != nil {
 			log.Fatalf("Server failed: %v", err)
 		}
