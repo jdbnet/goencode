@@ -36,7 +36,7 @@ jobs:
 
       - name: Build and push Docker image
         run: |
-          docker build -t cr.jdbnet.co.uk/public/goencode:${{ steps.get_version.outputs.CLEAN_VERSION }} .
+          docker build --build-arg APP_VERSION=${{ steps.get_version.outputs.VERSION }} -t cr.jdbnet.co.uk/public/goencode:${{ steps.get_version.outputs.CLEAN_VERSION }} .
           docker push cr.jdbnet.co.uk/public/goencode:${{ steps.get_version.outputs.CLEAN_VERSION }}
           docker tag cr.jdbnet.co.uk/public/goencode:${{ steps.get_version.outputs.CLEAN_VERSION }} cr.jdbnet.co.uk/public/goencode:latest
           docker push cr.jdbnet.co.uk/public/goencode:latest
