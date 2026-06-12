@@ -6,11 +6,13 @@ WORKDIR /app
 # Copy source code
 COPY . .
 
+ARG APP_VERSION=dev
+
 # Run go mod tidy to generate go.sum based on source
 RUN go mod tidy
 
 # Build the application
-RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -o /app/bin/goencode ./cmd/goencode
+RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -ldflags="-s -w -X main.Version=${APP_VERSION}" -o /app/bin/goencode ./cmd/goencode
 
 # Final stage
 FROM debian:bookworm-slim
