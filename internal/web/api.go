@@ -165,5 +165,6 @@ func (s *Server) handleRequeueJob(w http.ResponseWriter, r *http.Request) {
 	
 	s.qm.NotifySSE("queue_updated", nil)
 	s.qm.NotifySSE("job_added", nil)
+	s.qm.Trigger()
 	w.WriteHeader(http.StatusOK)
 }
