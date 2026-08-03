@@ -54,6 +54,7 @@
     const queueBody = document.getElementById('queue-body');
     let currentPage = 1;
     let currentLimit = 10;
+    const processingStartTimes = new Map();
 
     function formatElapsed(ms) {
         const totalSecs = Math.floor(ms / 1000);
@@ -73,6 +74,30 @@
         parts.push(`${seconds}s`);
         
         return parts.join(' ');
+    }
+
+    function parseJobStartMs(updatedAt) {
+        if (!updatedAt) return Date.now();
+        const ms = Date.parse(updatedAt);
+        if (!Number.isFinite(ms)) return Date.now();
+        // Guard against server/client clock skew showing a future start time.
+        return Math.min(ms, Date.now());
+    }
+
+    function rememberProcessingStart(job) {
+        if (!job || job.status !== 'processing') return;
+        if (!processingStartTimes.has(job.id)) {
+            processingStartTimes.set(job.id, parseJobStartMs(job.updated_at));
+        }
+    }
+
+    function forgetProcessingStart(jobId) {
+        processingStartTimes.delete(jobId);
+    }
+
+    function getProcessingStartMs(job) {
+        rememberProcessingStart(job);
+        return processingStartTimes.get(job.id);
     }
 
     async function loadQueue() {
@@ -105,15 +130,15 @@
             
             let progressHtml = '';
             if (job.status === 'processing') {
-                const elapsedMs = Date.now() - new Date(job.updated_at).getTime();
-                const formatted = formatElapsed(elapsedMs);
+                const startMs = getProcessingStartMs(job);
+                const formatted = formatElapsed(Date.now() - startMs);
                 progressHtml = `
                     <div class="progress-bar">
                         <div class="progress-fill" id="progress-${job.id}" style="width: 0%"></div>
                     </div>
                     <div style="display: flex; justify-content: space-between; font-size: 0.75rem; color: var(--text-secondary); margin-top: 0.25rem;">
                         <span id="progress-text-${job.id}">0%</span>
-                        <span id="progress-elapsed-${job.id}" class="progress-elapsed" data-start-time="${job.updated_at}">Elapsed: ${formatted}</span>
+                        <span id="progress-elapsed-${job.id}" class="progress-elapsed" data-job-id="${job.id}" data-start-ms="${startMs}">Elapsed: ${formatted}</span>
                     </div>
                 `;
             }
@@ -166,9 +191,21 @@
 
     // SSE listeners
     window.sse.addEventListener('queue_updated', () => loadQueue());
-    window.sse.addEventListener('job_started', () => loadQueue());
-    window.sse.addEventListener('job_completed', () => loadQueue());
-    window.sse.addEventListener('job_failed', () => loadQueue());
+    window.sse.addEventListener('job_started', (e) => {
+        const job = JSON.parse(e.data);
+        processingStartTimes.set(job.id, parseJobStartMs(job.updated_at));
+        loadQueue();
+    });
+    window.sse.addEventListener('job_completed', (e) => {
+        const data = JSON.parse(e.data);
+        forgetProcessingStart(data.id);
+        loadQueue();
+    });
+    window.sse.addEventListener('job_failed', (e) => {
+        const data = JSON.parse(e.data);
+        forgetProcessingStart(data.id);
+        loadQueue();
+    });
     window.sse.addEventListener('job_added', () => loadQueue());
 
     window.sse.addEventListener('progress', (e) => {
@@ -184,12 +221,12 @@
     // Update elapsed times periodically
     setInterval(() => {
         document.querySelectorAll('.progress-elapsed').forEach(el => {
-            const startTimeStr = el.getAttribute('data-start-time');
-            if (startTimeStr) {
-                const startTime = new Date(startTimeStr).getTime();
-                const elapsedMs = Date.now() - startTime;
-                el.innerText = `Elapsed: ${formatElapsed(elapsedMs)}`;
-            }
+            const jobId = Number(el.getAttribute('data-job-id'));
+            const storedStart = processingStartTimes.get(jobId);
+            const attrStart = Number(el.getAttribute('data-start-ms'));
+            const startMs = storedStart ?? attrStart;
+            if (!Number.isFinite(startMs)) return;
+            el.innerText = `Elapsed: ${formatElapsed(Date.now() - startMs)}`;
         });
     }, 1000);
 

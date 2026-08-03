@@ -108,7 +108,7 @@ func GetJobsPaginated(limit, offset int) ([]Job, int, error) {
 }
 
 func UpdateJobStatus(id int, status, errMsg string) error {
-	_, err := DB.Exec(`UPDATE jobs SET status = ?, error_message = ? WHERE id = ?`, status, nullStr(errMsg), id)
+	_, err := DB.Exec(`UPDATE jobs SET status = ?, error_message = ?, updated_at = UTC_TIMESTAMP(6) WHERE id = ?`, status, nullStr(errMsg), id)
 	return err
 }
 
