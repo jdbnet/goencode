@@ -1,6 +1,7 @@
 package watcher
 
 import (
+	"fmt"
 	"log"
 	"os"
 	"path/filepath"
@@ -10,6 +11,7 @@ import (
 
 	"github.com/fsnotify/fsnotify"
 	"goencode/internal/db"
+	"goencode/internal/encoder"
 	"goencode/internal/queue"
 )
 
@@ -35,11 +37,11 @@ func NewManager(qm *queue.Manager) (*Manager, error) {
 		processChan:  make(chan string, 10000),
 		stopChan:     make(chan struct{}),
 	}
-	
+
 	for i := 0; i < 3; i++ {
 		go m.processWorker()
 	}
-	
+
 	return m, nil
 }
 
@@ -54,7 +56,6 @@ func (m *Manager) Stop() {
 }
 
 func (m *Manager) Reload() {
-	// Remove all existing watches
 	for _, path := range m.watcher.WatchList() {
 		m.watcher.Remove(path)
 	}
@@ -74,8 +75,7 @@ func (m *Manager) Reload() {
 			continue
 		}
 		log.Printf("Watching and scanning %s", f.FolderPath)
-		
-		// Walk the directory to add all subdirectories to watcher and scan existing files
+
 		filepath.Walk(f.FolderPath, func(path string, info os.FileInfo, err error) error {
 			if err != nil {
 				log.Printf("Error accessing path %s during scan: %v", path, err)
@@ -86,12 +86,52 @@ func (m *Manager) Reload() {
 					log.Printf("Failed to watch %s: %v", path, err)
 				}
 			} else {
-				// Process existing file asynchronously
 				go m.handleEvent(path)
 			}
 			return nil
 		})
 	}
+}
+
+// ScanFolder immediately scans all files in a watch folder, skipping debounce and stability waits.
+func (m *Manager) ScanFolder(id int) (int, error) {
+	folders, err := db.GetWatchFolders()
+	if err != nil {
+		return 0, err
+	}
+
+	var folder *db.WatchFolder
+	for _, f := range folders {
+		if f.ID == id {
+			if !f.Enabled {
+				return 0, fmt.Errorf("folder is disabled")
+			}
+			folder = &f
+			break
+		}
+	}
+	if folder == nil {
+		return 0, fmt.Errorf("folder not found")
+	}
+
+	count := 0
+	err = filepath.Walk(folder.FolderPath, func(path string, info os.FileInfo, err error) error {
+		if err != nil {
+			log.Printf("Error accessing path %s during scan: %v", path, err)
+			return nil
+		}
+		if !info.IsDir() {
+			count++
+			go m.processFileImmediate(path)
+		}
+		return nil
+	})
+	if err != nil {
+		return count, err
+	}
+
+	log.Printf("Manual scan started for %s (%d files)", folder.FolderPath, count)
+	return count, nil
 }
 
 func (m *Manager) watchLoop() {
@@ -104,7 +144,6 @@ func (m *Manager) watchLoop() {
 				return
 			}
 			if event.Has(fsnotify.Write) || event.Has(fsnotify.Create) {
-				// Check if the created event is a directory
 				if event.Has(fsnotify.Create) {
 					info, err := os.Stat(event.Name)
 					if err == nil && info.IsDir() {
@@ -138,7 +177,7 @@ func (m *Manager) processWorker() {
 		case <-m.stopChan:
 			return
 		case path := <-m.processChan:
-			go m.processFile(path)
+			go m.processFile(path, true)
 		}
 	}
 }
@@ -155,7 +194,7 @@ func (m *Manager) handleEvent(filePath string) {
 		m.timersMu.Lock()
 		delete(m.timers, filePath)
 		m.timersMu.Unlock()
-		
+
 		select {
 		case m.processChan <- filePath:
 		default:
@@ -164,43 +203,46 @@ func (m *Manager) handleEvent(filePath string) {
 	})
 }
 
-func (m *Manager) processFile(filePath string) {
+func (m *Manager) processFileImmediate(filePath string) {
+	m.processFile(filePath, false)
+}
 
+func (m *Manager) processFile(filePath string, waitForStable bool) {
 	info, err := os.Stat(filePath)
 	if err != nil || info.IsDir() {
-		return // File removed or is a directory
+		return
 	}
 
-	// Make sure it's not a temp file
 	if filepath.Ext(filePath) == ".tmp" {
 		return
 	}
 
-	// Wait until the file is fully copied and stable
-	var lastSize int64 = info.Size()
-	var lastModTime time.Time = info.ModTime()
-	var stableCount int
+	if waitForStable {
+		var lastSize int64 = info.Size()
+		var lastModTime time.Time = info.ModTime()
+		var stableCount int
 
-	for {
-		time.Sleep(5 * time.Second)
-		currentInfo, err := os.Stat(filePath)
-		if err != nil {
-			return // File was likely deleted during copying
-		}
-
-		if currentInfo.Size() == lastSize && currentInfo.ModTime().Equal(lastModTime) {
-			stableCount++
-			if stableCount >= 3 { // Stable for 15 seconds
-				break
+		for {
+			time.Sleep(5 * time.Second)
+			currentInfo, err := os.Stat(filePath)
+			if err != nil {
+				return
 			}
-		} else {
-			stableCount = 0
-			lastSize = currentInfo.Size()
-			lastModTime = currentInfo.ModTime()
+
+			if currentInfo.Size() == lastSize && currentInfo.ModTime().Equal(lastModTime) {
+				stableCount++
+				if stableCount >= 3 {
+					info = currentInfo
+					break
+				}
+			} else {
+				stableCount = 0
+				lastSize = currentInfo.Size()
+				lastModTime = currentInfo.ModTime()
+			}
 		}
 	}
 
-	// Re-check after waiting
 	alreadyInQueue, err := db.IsFileAlreadyProcessedOrQueued(filePath)
 	if err != nil {
 		log.Printf("Error checking DB for %s: %v", filePath, err)
@@ -210,39 +252,25 @@ func (m *Manager) processFile(filePath string) {
 		return
 	}
 
-	// Find which watch folder it belongs to
-	folders, err := db.GetWatchFolders()
-	if err != nil {
+	match, found := findWatchFolder(filePath)
+	if !found {
 		return
 	}
 
-	var match db.WatchFolder
-	found := false
-	for _, f := range folders {
-		if !f.Enabled {
-			continue
+	if skip, reason := checkSkip(filePath, match); skip {
+		job := db.Job{
+			FilePath:         filePath,
+			MediaType:        match.MediaType,
+			TargetResolution: match.TargetResolution,
+			FFmpegFlags:      match.CustomFFmpegFlags,
+			OriginalSize:     info.Size(),
+			ErrorMessage:     reason,
 		}
-		// Check if filePath is inside f.FolderPath
-		cleanPath := filepath.Clean(filePath)
-		folderPath := filepath.Clean(strings.TrimSpace(f.FolderPath))
-		
-		var isMatch bool
-		if cleanPath == folderPath {
-			isMatch = true
-		} else if folderPath == string(os.PathSeparator) {
-			isMatch = strings.HasPrefix(cleanPath, folderPath)
-		} else {
-			isMatch = strings.HasPrefix(cleanPath, folderPath+string(os.PathSeparator))
+		if err := db.AddJobReport(job, "skipped", info.Size(), 0, 0); err != nil {
+			log.Printf("Failed to record skip for %s: %v", filePath, err)
+			return
 		}
-		
-		if isMatch {
-			match = f
-			found = true
-			break
-		}
-	}
-
-	if !found {
+		log.Printf("Skipped %s: %s", filePath, reason)
 		return
 	}
 
@@ -255,4 +283,40 @@ func (m *Manager) processFile(filePath string) {
 	log.Printf("Added job for %s", filePath)
 	m.queueManager.NotifySSE("job_added", nil)
 	m.queueManager.Trigger()
+}
+
+func checkSkip(filePath string, folder db.WatchFolder) (bool, string) {
+	if folder.MediaType == "video" {
+		return encoder.CheckVideoSkip(filePath, folder.TargetResolution)
+	}
+	return encoder.CheckAudioSkip(filePath)
+}
+
+func findWatchFolder(filePath string) (db.WatchFolder, bool) {
+	folders, err := db.GetWatchFolders()
+	if err != nil {
+		return db.WatchFolder{}, false
+	}
+
+	cleanPath := filepath.Clean(filePath)
+	for _, f := range folders {
+		if !f.Enabled {
+			continue
+		}
+		folderPath := filepath.Clean(strings.TrimSpace(f.FolderPath))
+
+		var isMatch bool
+		if cleanPath == folderPath {
+			isMatch = true
+		} else if folderPath == string(os.PathSeparator) {
+			isMatch = strings.HasPrefix(cleanPath, folderPath)
+		} else {
+			isMatch = strings.HasPrefix(cleanPath, folderPath+string(os.PathSeparator))
+		}
+
+		if isMatch {
+			return f, true
+		}
+	}
+	return db.WatchFolder{}, false
 }

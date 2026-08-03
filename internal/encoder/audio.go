@@ -1,6 +1,7 @@
 package encoder
 
 import (
+	"fmt"
 	"os/exec"
 	"strconv"
 	"strings"
@@ -19,17 +20,15 @@ func (m *FFmpegManager) BuildAudioCmd(inputPath, outputPath, ffmpegFlags string)
 	return exec.Command(m.BinaryPath, args...), nil
 }
 
-func (m *FFmpegManager) ShouldSkipAudio(inputPath string) bool {
-	// Probe the codec
+func CheckAudioSkip(inputPath string) (bool, string) {
 	cmd := exec.Command("ffprobe", "-v", "quiet", "-select_streams", "a:0",
 		"-show_entries", "stream=codec_name", "-of", "csv=p=0", inputPath)
 	out, err := cmd.Output()
 	if err != nil {
-		return false
+		return false, ""
 	}
 	codec := strings.TrimSpace(string(out))
 
-	// If it's already mp3, check bitrate
 	if codec == "mp3" {
 		cmdBr := exec.Command("ffprobe", "-v", "quiet", "-select_streams", "a:0",
 			"-show_entries", "stream=bit_rate", "-of", "csv=p=0", inputPath)
@@ -37,9 +36,14 @@ func (m *FFmpegManager) ShouldSkipAudio(inputPath string) bool {
 		if err == nil {
 			br, _ := strconv.Atoi(strings.TrimSpace(string(outBr)))
 			if br >= 300000 {
-				return true // It's ~320k mp3
+				return true, fmt.Sprintf("Already MP3 at %dkbps (target: 320kbps)", br/1000)
 			}
 		}
 	}
-	return false
+	return false, ""
+}
+
+func (m *FFmpegManager) ShouldSkipAudio(inputPath string) bool {
+	skip, _ := CheckAudioSkip(inputPath)
+	return skip
 }

@@ -34,42 +34,42 @@ func (m *FFmpegManager) BuildVideoCmd(inputPath, outputPath, targetResolution, f
 	return exec.Command(m.BinaryPath, args...), nil
 }
 
-func (m *FFmpegManager) ShouldSkipVideo(inputPath, targetResolution string) bool {
-	// Probe the codec
+func CheckVideoSkip(inputPath, targetResolution string) (bool, string) {
 	cmd := exec.Command("ffprobe", "-v", "quiet", "-select_streams", "v:0",
 		"-show_entries", "stream=codec_name", "-of", "csv=p=0", inputPath)
 	out, err := cmd.Output()
 	if err != nil {
-		return false
+		return false, ""
 	}
 	codec := strings.TrimSpace(string(out))
 
-	// Probe the height
 	cmdHeight := exec.Command("ffprobe", "-v", "quiet", "-select_streams", "v:0",
 		"-show_entries", "stream=height", "-of", "csv=p=0", inputPath)
 	outHeight, err := cmdHeight.Output()
 	if err != nil {
-		return false
+		return false, ""
 	}
-	
-	// If it's not H.264 or H.265, do not skip (encode it)
+
 	if codec != "h264" && codec != "hevc" {
-		return false
+		return false, ""
 	}
-	
-	// If it's H.265 and no target resolution is set, it's already in the target codec
+
 	if codec == "hevc" && targetResolution == "" {
-		return true
+		return true, "Already HEVC - no re-encode needed"
 	}
-	
-	// If it's H.265 and target resolution is set, only skip if current height is <= target height
+
 	if codec == "hevc" && targetResolution != "" {
 		currentHeight, _ := strconv.Atoi(strings.TrimSpace(string(outHeight)))
 		targetHeight, _ := strconv.Atoi(strings.TrimRight(strings.ToLower(targetResolution), "p"))
 		if currentHeight > 0 && targetHeight > 0 && currentHeight <= targetHeight {
-			return true
+			return true, fmt.Sprintf("Already HEVC at %dp (target: %s)", currentHeight, targetResolution)
 		}
 	}
-	
-	return false
+
+	return false, ""
+}
+
+func (m *FFmpegManager) ShouldSkipVideo(inputPath, targetResolution string) bool {
+	skip, _ := CheckVideoSkip(inputPath, targetResolution)
+	return skip
 }

@@ -148,8 +148,9 @@ func (m *Manager) runEncoder(job db.Job) error {
 	var execCmd *exec.Cmd
 
 	if job.MediaType == "video" {
-		if m.encoder.ShouldSkipVideo(job.FilePath, job.TargetResolution) {
-			log.Printf("Skipping video %d - already target codec/resolution", job.ID)
+		if skip, reason := encoder.CheckVideoSkip(job.FilePath, job.TargetResolution); skip {
+			log.Printf("Skipping video %d - %s", job.ID, reason)
+			job.ErrorMessage = reason
 			return db.AddJobReport(job, "skipped", originalSize, 0, 0)
 		}
 		
@@ -169,8 +170,9 @@ func (m *Manager) runEncoder(job db.Job) error {
 			return err
 		}
 	} else {
-		if m.encoder.ShouldSkipAudio(job.FilePath) {
-			log.Printf("Skipping audio %d - already target codec/bitrate", job.ID)
+		if skip, reason := encoder.CheckAudioSkip(job.FilePath); skip {
+			log.Printf("Skipping audio %d - %s", job.ID, reason)
+			job.ErrorMessage = reason
 			return db.AddJobReport(job, "skipped", originalSize, 0, 0)
 		}
 		

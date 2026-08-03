@@ -88,6 +88,7 @@
                 <td>${f.target_resolution || '-'}</td>
                 <td><code style="background: var(--bg); padding: 0.2rem; border-radius: 4px;">${f.custom_ffmpeg_flags || '-'}</code></td>
                 <td>
+                    <button class="btn btn-sm btn-outline" onclick="scanFolder(${f.id}, this)">Scan Now</button>
                     <button class="btn btn-sm btn-danger" onclick="deleteFolder(${f.id})">Delete</button>
                 </td>
             </tr>
@@ -127,6 +128,31 @@
             loadFolders();
         } else {
             alert('Failed to add folder');
+        }
+    }
+
+    async function scanFolder(id, btn) {
+        const originalText = btn.textContent;
+        btn.disabled = true;
+        btn.textContent = 'Scanning...';
+        try {
+            const res = await fetch('/api/folders/scan/' + id, { method: 'POST' });
+            if (res.ok) {
+                const data = await res.json();
+                btn.textContent = `Scanning ${data.files_scanned} files...`;
+                setTimeout(() => {
+                    btn.disabled = false;
+                    btn.textContent = originalText;
+                }, 3000);
+            } else {
+                alert('Failed to scan folder: ' + await res.text());
+                btn.disabled = false;
+                btn.textContent = originalText;
+            }
+        } catch (e) {
+            alert('Error: ' + e.message);
+            btn.disabled = false;
+            btn.textContent = originalText;
         }
     }
 
