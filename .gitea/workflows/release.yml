@@ -1,64 +1,64 @@
 name: Release
 
 on:
-  pull_request:
+  push:
     branches:
       - main
-    types: [closed]
 
 jobs:
   release:
-    if: github.event.pull_request.merged == true && startsWith(github.head_ref, 'v')
     runs-on: build-htz-01
     steps:
-      - name: Checkout code
+      - name: Checkout
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
 
-      - name: Extract Version
-        id: get_version
-        run: |
-          RAW_VERSION=${{ github.head_ref }}
-          CLEAN_VERSION=${RAW_VERSION#v}
-          echo "VERSION=${RAW_VERSION}" >> $GITHUB_OUTPUT
-          echo "CLEAN_VERSION=${CLEAN_VERSION}" >> $GITHUB_OUTPUT
+      - name: Release
+        id: semantic
+        uses: https://git.jdbnet.co.uk/jamie/go-semantic-release-provider-gitea@v1.2.3
+        with:
+          gitea-host: ${{ gitea.server_url }}
+          gitea-token: ${{ secrets.GITEA_TOKEN }}
+
+      - name: Checkout release tag
+        if: steps.semantic.outputs.version != ''
+        uses: actions/checkout@v4
+        with:
+          ref: v${{ steps.semantic.outputs.version }}
+          fetch-depth: 0
 
       - name: Set up Go
+        if: steps.semantic.outputs.version != ''
         uses: actions/setup-go@v5
         with:
           go-version-file: go.mod
 
       - name: Build Binary
+        if: steps.semantic.outputs.version != ''
         run: |
           go mod tidy
-          CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -ldflags="-s -w -X main.Version=${{ steps.get_version.outputs.CLEAN_VERSION }}" -o goencode ./cmd/goencode
+          CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -ldflags="-s -w -X main.Version=${{ steps.semantic.outputs.version }}" -o goencode ./cmd/goencode
 
       - name: Build and push Docker image
+        if: steps.semantic.outputs.version != ''
         run: |
-          docker build --build-arg APP_VERSION=${{ steps.get_version.outputs.CLEAN_VERSION }} -t cr.jdbnet.co.uk/public/goencode:${{ steps.get_version.outputs.CLEAN_VERSION }} .
-          docker push cr.jdbnet.co.uk/public/goencode:${{ steps.get_version.outputs.CLEAN_VERSION }}
-          docker tag cr.jdbnet.co.uk/public/goencode:${{ steps.get_version.outputs.CLEAN_VERSION }} cr.jdbnet.co.uk/public/goencode:latest
-          docker push cr.jdbnet.co.uk/public/goencode:latest
+          VERSION="${{ steps.semantic.outputs.version }}"
+          IMAGE="cr.jdbnet.co.uk/public/goencode"
+          docker build --build-arg APP_VERSION=$VERSION -t $IMAGE:$VERSION -t $IMAGE:latest .
+          docker push $IMAGE:$VERSION && docker push $IMAGE:latest
 
-      # - name: Generate Changelog
-      #   id: changelog
-      #   uses: https://github.com/metcalfc/changelog-generator@v4.6.2
-      #   with:
-      #     myToken: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Create Gitea Release
+      - name: Upload release assets
+        if: steps.semantic.outputs.version != ''
         uses: https://gitea.com/actions/gitea-release-action@v1
         with:
-          tag_name: ${{ steps.get_version.outputs.VERSION }}
-          name: ${{ steps.get_version.outputs.VERSION }}
-          body: ${{ steps.changelog.outputs.changelog }}
-          draft: false
-          prerelease: false
+          token: ${{ secrets.GITEA_TOKEN }}
+          tag_name: v${{ steps.semantic.outputs.version }}
           files: |
             goencode
 
       - name: Upload to Cloudflare R2
+        if: steps.semantic.outputs.version != ''
         env:
           AWS_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
           AWS_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
