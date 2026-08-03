@@ -54,6 +54,7 @@ jobs:
         with:
           token: ${{ secrets.GITEA_TOKEN }}
           tag_name: v${{ steps.semantic.outputs.version }}
+          name: v${{ steps.semantic.outputs.version }}
           files: |
             goencode
 
