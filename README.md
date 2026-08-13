@@ -11,7 +11,7 @@ GoEncode is a lightweight, high-performance media transcoding server written in 
 
 - **Watch Folders**: Automatically monitor designated directories for new media files.
 - **Smart Queue & Debouncing**: Prevents incomplete files from being processed while they are still being copied to the watch folder.
-- **Background Processing**: Processes media sequentially with up to 3 worker threads. Files are safely copied to a temporary directory before encoding to avoid hammering network-attached storage (NAS).
+- **Background Processing**: Encodes jobs concurrently with a configurable worker pool (default 1, max 16). Files are copied to a temporary directory before encoding to avoid hammering network-attached storage (NAS).
 - **Format Intelligence**: Probes media to detect codecs and resolution, automatically skipping files that already meet the target codec/resolution.
 - **Web Dashboard**: Modern, responsive interface with Server-Sent Events (SSE) for live tracking of job progress, queue stats, and server logs.
 - **Robust Persistence**: Job history, metrics (size saved, time taken), and configuration are all saved to a MariaDB/MySQL database.
@@ -42,9 +42,10 @@ services:
       - GOENCODE_DB_USER=goencode
       - GOENCODE_DB_PASS=goencode_password
       - GOENCODE_DB_NAME=goencode
-      - GOENCODE_SERVER_LISTEN=0.0.0.0
-      - GOENCODE_SERVER_PORT=8080
+      - GOENCODE_LISTEN_ADDR=0.0.0.0
+      - GOENCODE_PORT=8080
       - GOENCODE_ENCODER_TEMP=/tmp/goencode
+      - GOENCODE_ENCODER_WORKERS=1
       - TZ=Europe/London
       # Web UI Authentication (Optional)
       - GOENCODE_AUTH_USER=admin
@@ -95,11 +96,12 @@ GoEncode can be configured via `goencode.yaml` or entirely via environment varia
 | `GOENCODE_DB_USER` | Database username | `goencode` |
 | `GOENCODE_DB_PASS` | Database password | |
 | `GOENCODE_DB_NAME` | Database name | `goencode` |
-| `GOENCODE_SERVER_LISTEN` | IP to bind the web interface | `0.0.0.0` |
-| `GOENCODE_SERVER_PORT` | Port for the web interface | `8080` |
+| `GOENCODE_LISTEN_ADDR` | IP to bind the web interface. Alias: `GOENCODE_SERVER_LISTEN` | `0.0.0.0` |
+| `GOENCODE_PORT` | Port for the web interface. Alias: `GOENCODE_SERVER_PORT` | `8080` |
 | `TZ` | Container TimeZone | `UTC` |
 | `GOENCODE_AUTH_USER` | Username for the web UI | |
 | `GOENCODE_AUTH_PASS` | Password for the web UI | |
 | `GOENCODE_WEBHOOK_URL` | Webhook URL for job failure notifications | |
-| `GOENCODE_ENCODER_TEMP`| Temp directory for processing jobs | `/tmp/goencode` |
+| `GOENCODE_ENCODER_TEMP` | Temp directory for processing jobs | `/tmp/goencode` |
+| `GOENCODE_ENCODER_WORKERS` | Concurrent encode jobs (1-16) | `1` |
 | `GOENCODE_NO_UPDATE` | Set to `1` or `true` to disable binary auto-update on startup | |

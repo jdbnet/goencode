@@ -57,3 +57,29 @@ func TestInterruptNilCmd(t *testing.T) {
 	interruptCmd(&exec.Cmd{})
 	killCmd(&exec.Cmd{})
 }
+
+func TestClampWorkers(t *testing.T) {
+	if got := clampWorkers(0); got != 1 {
+		t.Fatalf("clampWorkers(0) = %d, want 1", got)
+	}
+	if got := clampWorkers(-3); got != 1 {
+		t.Fatalf("clampWorkers(-3) = %d, want 1", got)
+	}
+	if got := clampWorkers(3); got != 3 {
+		t.Fatalf("clampWorkers(3) = %d, want 3", got)
+	}
+	if got := clampWorkers(99); got != maxWorkers {
+		t.Fatalf("clampWorkers(99) = %d, want %d", got, maxWorkers)
+	}
+}
+
+func TestNewManagerClampsWorkers(t *testing.T) {
+	m := NewManager("ffmpeg", "/tmp", "", 0, nil)
+	if m.Workers != 1 {
+		t.Fatalf("Workers = %d, want 1", m.Workers)
+	}
+	m = NewManager("ffmpeg", "/tmp", "", 8, nil)
+	if m.Workers != 8 {
+		t.Fatalf("Workers = %d, want 8", m.Workers)
+	}
+}

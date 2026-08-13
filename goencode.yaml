@@ -17,6 +17,7 @@ database:
 encoder:
   ffmpeg_path: "ffmpeg"
   temp_dir: "/tmp/goencode"
+  workers: 1
 
 logging:
   level: "info"

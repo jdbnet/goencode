@@ -41,7 +41,7 @@ func main() {
 	// Initialize logger
 	logger.Init(sseServer.Broadcast)
 
-	qm := queue.NewManager(cfg.Encoder.FFmpegPath, cfg.Encoder.TempDir, cfg.Notifications.WebhookURL, sseServer.Broadcast)
+	qm := queue.NewManager(cfg.Encoder.FFmpegPath, cfg.Encoder.TempDir, cfg.Notifications.WebhookURL, cfg.Encoder.Workers, sseServer.Broadcast)
 	qm.Start()
 	defer qm.Stop()
 

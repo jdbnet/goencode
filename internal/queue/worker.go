@@ -71,22 +71,17 @@ func (m *Manager) workerLoop() {
 }
 
 func (m *Manager) processNextJob() {
-	m.mu.Lock()
-	if m.isProcessing || m.shuttingDown {
-		m.mu.Unlock()
+	if m.isShuttingDown() {
 		return
 	}
-	m.isProcessing = true
-	m.mu.Unlock()
 
+	var jobID int
 	var hasJobs bool
 	defer func() {
-		m.endJob()
-		m.mu.Lock()
-		m.isProcessing = false
-		shuttingDown := m.shuttingDown
-		m.mu.Unlock()
-		if hasJobs && !shuttingDown {
+		if jobID != 0 {
+			m.endJob(jobID)
+		}
+		if hasJobs && !m.isShuttingDown() {
 			m.Trigger()
 		}
 	}()
@@ -116,21 +111,19 @@ func (m *Manager) processNextJob() {
 		return
 	}
 
-	ctx := m.beginJob(job.ID)
-	if ctx.Err() != nil {
-		return
-	}
-
 	claimed, err := db.ClaimJob(job.ID)
 	if err != nil {
 		log.Printf("Failed to claim job %d: %v", job.ID, err)
 		return
 	}
 	if !claimed {
-		hasJobs = true
 		return
 	}
 
+	jobID = job.ID
+	m.Trigger()
+
+	ctx := m.beginJob(job.ID)
 	log.Printf("Starting job %d for %s", job.ID, job.FilePath)
 
 	job.Status = "processing"
@@ -139,7 +132,7 @@ func (m *Manager) processNextJob() {
 
 	err = m.runEncoder(ctx, job)
 	if ctx.Err() != nil || errors.Is(err, context.Canceled) {
-		m.cleanupTemps()
+		m.cleanupTemps(job.ID)
 		if m.isShuttingDown() {
 			log.Printf("Job %d interrupted by shutdown", job.ID)
 			job.ErrorMessage = "Interrupted by shutdown"
@@ -171,7 +164,7 @@ func (m *Manager) processNextJob() {
 
 func (m *Manager) runEncoder(ctx context.Context, job db.Job) error {
 	startTime := time.Now()
-	defer m.cleanupTemps()
+	defer m.cleanupTemps(job.ID)
 
 	if _, err := os.Stat(job.FilePath); os.IsNotExist(err) {
 		return fmt.Errorf("source file missing")
@@ -203,7 +196,7 @@ func (m *Manager) runEncoder(ctx context.Context, job db.Job) error {
 	duration, _ := m.encoder.ProbeDuration(job.FilePath)
 
 	tempInPath := filepath.Join(m.TempDir, fmt.Sprintf("temp_in_%d_%s", job.ID, filepath.Base(job.FilePath)))
-	m.addTemps(tempInPath, tempOutPath)
+	m.addTemps(job.ID, tempInPath, tempOutPath)
 
 	if err := ctx.Err(); err != nil {
 		return err
@@ -277,7 +270,13 @@ func (m *Manager) runEncoder(ctx context.Context, job db.Job) error {
 	if err := execCmd.Start(); err != nil {
 		return fmt.Errorf("failed to start ffmpeg: %w", err)
 	}
-	m.setCurrentCmd(execCmd)
+	m.setCurrentCmd(job.ID, execCmd)
+	if ctx.Err() != nil {
+		interruptCmd(execCmd)
+		go escalateKill(execCmd, m.cmdStillCurrent)
+		_ = execCmd.Wait()
+		return ctx.Err()
+	}
 
 	scanner := bufio.NewScanner(stderr)
 	scanner.Split(bufio.ScanLines)
