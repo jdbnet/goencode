@@ -3,7 +3,9 @@ package encoder
 import (
 	"bytes"
 	"fmt"
+	"os"
 	"os/exec"
+	"path/filepath"
 	"strconv"
 	"strings"
 )
@@ -20,47 +22,139 @@ func NewManager(binaryPath string) *FFmpegManager {
 	return &FFmpegManager{BinaryPath: binaryPath}
 }
 
-func (m *FFmpegManager) ProbeCodec(filePath, streamType string) (string, error) {
-	cmd := exec.Command("ffprobe", "-v", "quiet", "-select_streams", streamType+":0",
-		"-show_entries", "stream=codec_name", "-of", "csv=p=0", filePath)
-	out, err := cmd.Output()
-	if err != nil {
-		return "", fmt.Errorf("ffprobe error: %w", err)
+func (m *FFmpegManager) probeBin() string {
+	return ffprobePath(m.BinaryPath)
+}
+
+func ffprobePath(ffmpegPath string) string {
+	if ffmpegPath == "" {
+		ffmpegPath = "ffmpeg"
 	}
-	return strings.TrimSpace(string(out)), nil
+	base := filepath.Base(ffmpegPath)
+	name := "ffprobe"
+	if strings.HasSuffix(strings.ToLower(base), ".exe") {
+		name = "ffprobe.exe"
+	}
+	dir := filepath.Dir(ffmpegPath)
+	if dir == "." {
+		return name
+	}
+	candidate := filepath.Join(dir, name)
+	if _, err := os.Stat(candidate); err == nil {
+		return candidate
+	}
+	return name
+}
+
+func runFfprobe(bin string, args ...string) ([]byte, error) {
+	cmd := exec.Command(bin, args...)
+	var stdout, stderr bytes.Buffer
+	cmd.Stdout = &stdout
+	cmd.Stderr = &stderr
+	if err := cmd.Run(); err != nil {
+		if msg := compactOutput(stderr.Bytes()); msg != "" {
+			return stdout.Bytes(), fmt.Errorf("ffprobe error: %w (%s)", err, msg)
+		}
+		return stdout.Bytes(), fmt.Errorf("ffprobe error: %w", err)
+	}
+	return stdout.Bytes(), nil
+}
+
+func compactOutput(out []byte) string {
+	s := strings.Join(strings.Fields(strings.TrimSpace(string(out))), " ")
+	if len(s) > 240 {
+		return s[:240] + "..."
+	}
+	return s
+}
+
+func firstCSVField(out []byte) string {
+	for _, line := range strings.Split(string(out), "\n") {
+		line = strings.TrimSpace(strings.TrimSuffix(line, "\r"))
+		if line == "" || strings.EqualFold(line, "n/a") {
+			continue
+		}
+		if i := strings.IndexByte(line, ','); i > 0 {
+			line = strings.TrimSpace(line[:i])
+		}
+		return line
+	}
+	return ""
+}
+
+func parseWH(s string) (int, int, bool) {
+	s = strings.TrimSpace(s)
+	sep := ","
+	if strings.Contains(s, "x") && !strings.Contains(s, ",") {
+		sep = "x"
+	}
+	var nums []int
+	for _, p := range strings.Split(s, sep) {
+		n, err := strconv.Atoi(strings.TrimSpace(p))
+		if err != nil || n <= 0 {
+			continue
+		}
+		nums = append(nums, n)
+	}
+	if len(nums) < 2 {
+		return 0, 0, false
+	}
+	return nums[0], nums[1], true
+}
+
+func parseResolution(out string) (int, int, error) {
+	var nums []int
+	for _, line := range strings.Split(out, "\n") {
+		line = strings.TrimSpace(strings.TrimSuffix(line, "\r"))
+		if line == "" {
+			continue
+		}
+		if w, h, ok := parseWH(line); ok {
+			return w, h, nil
+		}
+		if n, err := strconv.Atoi(line); err == nil && n > 0 {
+			nums = append(nums, n)
+			if len(nums) >= 2 {
+				return nums[0], nums[1], nil
+			}
+		}
+	}
+	got := compactOutput([]byte(out))
+	if got == "" {
+		return 0, 0, fmt.Errorf("invalid resolution format (empty ffprobe output; is ffprobe installed and is this a video file?)")
+	}
+	return 0, 0, fmt.Errorf("invalid resolution format %q", got)
+}
+
+func (m *FFmpegManager) ProbeCodec(filePath, streamType string) (string, error) {
+	out, err := runFfprobe(m.probeBin(), "-v", "error", "-select_streams", streamType+":0",
+		"-show_entries", "stream=codec_name", "-of", "csv=p=0", filePath)
+	if err != nil {
+		return "", err
+	}
+	return firstCSVField(out), nil
 }
 
 func (m *FFmpegManager) ProbeResolution(filePath string) (int, int, error) {
-	cmd := exec.Command("ffprobe", "-v", "quiet", "-select_streams", "v:0",
+	out, err := runFfprobe(m.probeBin(), "-v", "error", "-select_streams", "v:0",
 		"-show_entries", "stream=width,height", "-of", "csv=p=0", filePath)
-	out, err := cmd.Output()
 	if err != nil {
-		return 0, 0, fmt.Errorf("ffprobe error: %w", err)
+		return 0, 0, err
 	}
-	parts := strings.Split(strings.TrimSpace(string(out)), ",")
-	if len(parts) != 2 {
-		return 0, 0, fmt.Errorf("invalid resolution format")
-	}
-	w, err1 := strconv.Atoi(parts[0])
-	h, err2 := strconv.Atoi(parts[1])
-	if err1 != nil || err2 != nil {
-		return 0, 0, fmt.Errorf("invalid resolution numbers")
-	}
-	return w, h, nil
+	return parseResolution(string(out))
 }
 
 func (m *FFmpegManager) ProbeDuration(filePath string) (float64, error) {
-	cmd := exec.Command("ffprobe", "-v", "quiet", "-show_entries", "format=duration", "-of", "csv=p=0", filePath)
-	out, err := cmd.Output()
+	out, err := runFfprobe(m.probeBin(), "-v", "error", "-show_entries", "format=duration", "-of", "csv=p=0", filePath)
 	if err != nil {
-		return 0, fmt.Errorf("ffprobe error: %w", err)
+		return 0, err
 	}
-	return strconv.ParseFloat(strings.TrimSpace(string(out)), 64)
+	return strconv.ParseFloat(firstCSVField(out), 64)
 }
 
 func (m *FFmpegManager) ValidateFile(filePath string) error {
-	cmd := exec.Command("ffprobe", "-v", "quiet", "-show_format", "-show_streams", filePath)
-	if err := cmd.Run(); err != nil {
+	_, err := runFfprobe(m.probeBin(), "-v", "error", "-show_format", "-show_streams", filePath)
+	if err != nil {
 		return fmt.Errorf("file validation failed: %w", err)
 	}
 	return nil

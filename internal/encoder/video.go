@@ -152,22 +152,22 @@ func CheckVideoSkip(inputPath, targetResolution, videoCodec string) (bool, strin
 		return false, ""
 	}
 
-	cmd := exec.Command("ffprobe", "-v", "quiet", "-select_streams", "v:0",
+	cmd := exec.Command("ffprobe", "-v", "error", "-select_streams", "v:0",
 		"-show_entries", "stream=codec_name", "-of", "csv=p=0", inputPath)
 	out, err := cmd.Output()
 	if err != nil {
 		return false, ""
 	}
-	codec := strings.TrimSpace(string(out))
+	codec := firstCSVField(out)
 
-	cmdHeight := exec.Command("ffprobe", "-v", "quiet", "-select_streams", "v:0",
+	cmdHeight := exec.Command("ffprobe", "-v", "error", "-select_streams", "v:0",
 		"-show_entries", "stream=height", "-of", "csv=p=0", inputPath)
 	outHeight, err := cmdHeight.Output()
 	if err != nil {
 		return false, ""
 	}
 
-	return shouldSkipVideo(codec, strings.TrimSpace(string(outHeight)), targetResolution, videoCodec)
+	return shouldSkipVideo(codec, firstCSVField(outHeight), targetResolution, videoCodec)
 }
 
 func shouldSkipVideo(probedCodec, probedHeight, targetResolution, videoCodec string) (bool, string) {

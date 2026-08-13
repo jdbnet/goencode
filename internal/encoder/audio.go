@@ -188,18 +188,18 @@ func CheckAudioSkip(inputPath, ffmpegCodec, bitrate string) (bool, string) {
 		return false, ""
 	}
 
-	cmd := exec.Command("ffprobe", "-v", "quiet", "-select_streams", "a:0",
+	cmd := exec.Command("ffprobe", "-v", "error", "-select_streams", "a:0",
 		"-show_entries", "stream=codec_name", "-of", "csv=p=0", inputPath)
 	out, err := cmd.Output()
 	if err != nil {
 		return false, ""
 	}
-	probed := strings.TrimSpace(string(out))
+	probed := firstCSVField(out)
 	br := 0
-	cmdBr := exec.Command("ffprobe", "-v", "quiet", "-select_streams", "a:0",
+	cmdBr := exec.Command("ffprobe", "-v", "error", "-select_streams", "a:0",
 		"-show_entries", "stream=bit_rate", "-of", "csv=p=0", inputPath)
 	if outBr, err := cmdBr.Output(); err == nil {
-		br, _ = strconv.Atoi(strings.TrimSpace(string(outBr)))
+		br, _ = strconv.Atoi(firstCSVField(outBr))
 	}
 	return shouldSkipAudio(probed, br, opt.Codec, opt.Bitrate)
 }
