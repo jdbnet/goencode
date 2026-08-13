@@ -6,11 +6,11 @@ import (
 	"strings"
 )
 
-const folderSelectCols = `id, folder_path, media_type, target_resolution, custom_ffmpeg_flags, enabled, video_codec, audio_codec, crf, preset, tune, profile, container, output_dir, delete_source, keep_original_if_larger, created_at, updated_at`
+const folderSelectCols = `id, folder_path, media_type, target_resolution, custom_ffmpeg_flags, enabled, video_codec, audio_codec, crf, preset, tune, profile, container, output_dir, delete_source, keep_original_if_larger, keep_extra_streams, created_at, updated_at`
 
-const jobSelectCols = `id, file_path, media_type, status, priority, original_size, target_resolution, ffmpeg_flags, error_message, video_codec, audio_codec, crf, preset, tune, profile, container, output_dir, delete_source, keep_original_if_larger, force, created_at, updated_at`
+const jobSelectCols = `id, file_path, media_type, status, priority, original_size, target_resolution, ffmpeg_flags, error_message, video_codec, audio_codec, crf, preset, tune, profile, container, output_dir, delete_source, keep_original_if_larger, keep_extra_streams, force, created_at, updated_at`
 
-const reportSelectCols = `id, file_path, media_type, status, original_size, encoded_size, size_saved, processing_time, target_resolution, ffmpeg_flags, error_message, video_codec, audio_codec, crf, preset, tune, profile, container, output_dir, delete_source, keep_original_if_larger, created_at`
+const reportSelectCols = `id, file_path, media_type, status, original_size, encoded_size, size_saved, processing_time, target_resolution, ffmpeg_flags, error_message, video_codec, audio_codec, crf, preset, tune, profile, container, output_dir, delete_source, keep_original_if_larger, keep_extra_streams, created_at`
 
 func nullStr(s string) sql.NullString {
 	if s == "" {
@@ -19,7 +19,7 @@ func nullStr(s string) sql.NullString {
 	return sql.NullString{String: s, Valid: true}
 }
 
-func applyEncodeNulls(es *EncodeSettings, videoCodec, audioCodec, crf, preset, tune, profile, container, outputDir sql.NullString, deleteSource, keepIfLarger bool) {
+func applyEncodeNulls(es *EncodeSettings, videoCodec, audioCodec, crf, preset, tune, profile, container, outputDir sql.NullString, deleteSource, keepIfLarger, keepExtra bool) {
 	es.VideoCodec = "libx265"
 	if videoCodec.Valid && videoCodec.String != "" {
 		es.VideoCodec = videoCodec.String
@@ -49,6 +49,7 @@ func applyEncodeNulls(es *EncodeSettings, videoCodec, audioCodec, crf, preset, t
 	}
 	es.DeleteSource = deleteSource
 	es.KeepOriginalIfLarger = keepIfLarger
+	es.KeepExtraStreams = keepExtra
 }
 
 func encodeInsertArgs(es EncodeSettings) []interface{} {
@@ -64,6 +65,7 @@ func encodeInsertArgs(es EncodeSettings) []interface{} {
 		nullStr(es.OutputDir),
 		es.DeleteSource,
 		es.KeepOriginalIfLarger,
+		es.KeepExtraStreams,
 	}
 }
 
@@ -74,7 +76,7 @@ func scanWatchFolder(scan func(dest ...interface{}) error) (WatchFolder, error) 
 	err := scan(
 		&f.ID, &f.FolderPath, &f.MediaType, &targetRes, &ffmpegFlags, &f.Enabled,
 		&videoCodec, &audioCodec, &crf, &preset, &tune, &profile, &container, &outputDir,
-		&f.DeleteSource, &f.KeepOriginalIfLarger,
+		&f.DeleteSource, &f.KeepOriginalIfLarger, &f.KeepExtraStreams,
 		&f.CreatedAt, &f.UpdatedAt,
 	)
 	if err != nil {
@@ -86,7 +88,7 @@ func scanWatchFolder(scan func(dest ...interface{}) error) (WatchFolder, error) 
 	if ffmpegFlags.Valid {
 		f.CustomFFmpegFlags = ffmpegFlags.String
 	}
-	applyEncodeNulls(&f.EncodeSettings, videoCodec, audioCodec, crf, preset, tune, profile, container, outputDir, f.DeleteSource, f.KeepOriginalIfLarger)
+	applyEncodeNulls(&f.EncodeSettings, videoCodec, audioCodec, crf, preset, tune, profile, container, outputDir, f.DeleteSource, f.KeepOriginalIfLarger, f.KeepExtraStreams)
 	return f, nil
 }
 
@@ -97,7 +99,7 @@ func scanJob(scan func(dest ...interface{}) error) (Job, error) {
 	err := scan(
 		&j.ID, &j.FilePath, &j.MediaType, &j.Status, &j.Priority, &j.OriginalSize, &targetRes, &ffmpegFlags, &errMsg,
 		&videoCodec, &audioCodec, &crf, &preset, &tune, &profile, &container, &outputDir,
-		&j.DeleteSource, &j.KeepOriginalIfLarger, &j.Force,
+		&j.DeleteSource, &j.KeepOriginalIfLarger, &j.KeepExtraStreams, &j.Force,
 		&j.CreatedAt, &j.UpdatedAt,
 	)
 	if err != nil {
@@ -112,7 +114,7 @@ func scanJob(scan func(dest ...interface{}) error) (Job, error) {
 	if errMsg.Valid {
 		j.ErrorMessage = errMsg.String
 	}
-	applyEncodeNulls(&j.EncodeSettings, videoCodec, audioCodec, crf, preset, tune, profile, container, outputDir, j.DeleteSource, j.KeepOriginalIfLarger)
+	applyEncodeNulls(&j.EncodeSettings, videoCodec, audioCodec, crf, preset, tune, profile, container, outputDir, j.DeleteSource, j.KeepOriginalIfLarger, j.KeepExtraStreams)
 	return j, nil
 }
 
@@ -123,7 +125,7 @@ func scanJobReport(scan func(dest ...interface{}) error) (JobReport, error) {
 	err := scan(
 		&r.ID, &r.FilePath, &r.MediaType, &r.Status, &r.OriginalSize, &r.EncodedSize, &r.SizeSaved, &r.ProcessingTime, &targetRes, &ffmpegFlags, &errMsg,
 		&videoCodec, &audioCodec, &crf, &preset, &tune, &profile, &container, &outputDir,
-		&r.DeleteSource, &r.KeepOriginalIfLarger,
+		&r.DeleteSource, &r.KeepOriginalIfLarger, &r.KeepExtraStreams,
 		&r.CreatedAt,
 	)
 	if err != nil {
@@ -138,7 +140,7 @@ func scanJobReport(scan func(dest ...interface{}) error) (JobReport, error) {
 	if errMsg.Valid {
 		r.ErrorMessage = errMsg.String
 	}
-	applyEncodeNulls(&r.EncodeSettings, videoCodec, audioCodec, crf, preset, tune, profile, container, outputDir, r.DeleteSource, r.KeepOriginalIfLarger)
+	applyEncodeNulls(&r.EncodeSettings, videoCodec, audioCodec, crf, preset, tune, profile, container, outputDir, r.DeleteSource, r.KeepOriginalIfLarger, r.KeepExtraStreams)
 	return r, nil
 }
 
@@ -164,7 +166,7 @@ func AddWatchFolder(f WatchFolder) error {
 	f.EncodeSettings.ApplyDefaults()
 	args := []interface{}{f.FolderPath, f.MediaType, nullStr(f.TargetResolution), nullStr(f.CustomFFmpegFlags), f.Enabled}
 	args = append(args, encodeInsertArgs(f.EncodeSettings)...)
-	_, err := DB.Exec(`INSERT INTO watch_folders (folder_path, media_type, target_resolution, custom_ffmpeg_flags, enabled, video_codec, audio_codec, crf, preset, tune, profile, container, output_dir, delete_source, keep_original_if_larger) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`, args...)
+	_, err := DB.Exec(`INSERT INTO watch_folders (folder_path, media_type, target_resolution, custom_ffmpeg_flags, enabled, video_codec, audio_codec, crf, preset, tune, profile, container, output_dir, delete_source, keep_original_if_larger, keep_extra_streams) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`, args...)
 	return err
 }
 
@@ -173,7 +175,7 @@ func UpdateWatchFolder(f WatchFolder) error {
 	args := []interface{}{f.FolderPath, f.MediaType, nullStr(f.TargetResolution), nullStr(f.CustomFFmpegFlags)}
 	args = append(args, encodeInsertArgs(f.EncodeSettings)...)
 	args = append(args, f.ID)
-	_, err := DB.Exec(`UPDATE watch_folders SET folder_path = ?, media_type = ?, target_resolution = ?, custom_ffmpeg_flags = ?, video_codec = ?, audio_codec = ?, crf = ?, preset = ?, tune = ?, profile = ?, container = ?, output_dir = ?, delete_source = ?, keep_original_if_larger = ? WHERE id = ?`, args...)
+	_, err := DB.Exec(`UPDATE watch_folders SET folder_path = ?, media_type = ?, target_resolution = ?, custom_ffmpeg_flags = ?, video_codec = ?, audio_codec = ?, crf = ?, preset = ?, tune = ?, profile = ?, container = ?, output_dir = ?, delete_source = ?, keep_original_if_larger = ?, keep_extra_streams = ? WHERE id = ?`, args...)
 	return err
 }
 
@@ -298,7 +300,7 @@ func AddJob(j Job) error {
 	args := []interface{}{j.FilePath, j.MediaType, j.Priority, nullStr(j.TargetResolution), nullStr(j.FFmpegFlags), j.OriginalSize}
 	args = append(args, encodeInsertArgs(j.EncodeSettings)...)
 	args = append(args, j.Force)
-	_, err := DB.Exec(`INSERT INTO jobs (file_path, media_type, priority, target_resolution, ffmpeg_flags, original_size, video_codec, audio_codec, crf, preset, tune, profile, container, output_dir, delete_source, keep_original_if_larger, force) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`, args...)
+	_, err := DB.Exec(`INSERT INTO jobs (file_path, media_type, priority, target_resolution, ffmpeg_flags, original_size, video_codec, audio_codec, crf, preset, tune, profile, container, output_dir, delete_source, keep_original_if_larger, keep_extra_streams, force) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`, args...)
 	return err
 }
 
@@ -399,7 +401,7 @@ func AddJobReport(j Job, status string, encodedSize int64, sizeSaved int64, proc
 	j.EncodeSettings.ApplyDefaults()
 	args := []interface{}{j.FilePath, j.MediaType, status, j.OriginalSize, encodedSize, sizeSaved, processingTime, nullStr(j.TargetResolution), nullStr(j.FFmpegFlags), nullStr(j.ErrorMessage)}
 	args = append(args, encodeInsertArgs(j.EncodeSettings)...)
-	_, err := DB.Exec(`INSERT INTO job_reports (file_path, media_type, status, original_size, encoded_size, size_saved, processing_time, target_resolution, ffmpeg_flags, error_message, video_codec, audio_codec, crf, preset, tune, profile, container, output_dir, delete_source, keep_original_if_larger) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`, args...)
+	_, err := DB.Exec(`INSERT INTO job_reports (file_path, media_type, status, original_size, encoded_size, size_saved, processing_time, target_resolution, ffmpeg_flags, error_message, video_codec, audio_codec, crf, preset, tune, profile, container, output_dir, delete_source, keep_original_if_larger, keep_extra_streams) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`, args...)
 	return err
 }
 

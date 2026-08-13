@@ -31,7 +31,7 @@ func TestShouldSkipVideo(t *testing.T) {
 }
 
 func TestBuildVideoArgsDefaults(t *testing.T) {
-	args := buildVideoArgs("in.mkv", "out.mkv", VideoEncodeOptions{})
+	args := buildVideoArgs("in.mkv", "out.mkv", VideoEncodeOptions{KeepExtraStreams: true})
 	joined := strings.Join(args, " ")
 	if !strings.Contains(joined, "-c:v libx265") {
 		t.Errorf("expected libx265, got %s", joined)
@@ -48,15 +48,56 @@ func TestBuildVideoArgsDefaults(t *testing.T) {
 	if !strings.Contains(joined, "-f matroska") {
 		t.Errorf("expected matroska, got %s", joined)
 	}
+	if !strings.Contains(joined, "-map 0") || !strings.Contains(joined, "-c:s copy") || !strings.Contains(joined, "-c:t copy") {
+		t.Errorf("expected map all streams, got %s", joined)
+	}
+}
+
+func TestBuildVideoArgsDropsExtraStreams(t *testing.T) {
+	args := buildVideoArgs("in.mkv", "out.mkv", VideoEncodeOptions{})
+	joined := strings.Join(args, " ")
+	if strings.Contains(joined, "-map") {
+		t.Errorf("keep extra off should not map extra streams, got %s", joined)
+	}
+}
+
+func TestBuildVideoArgsCustomMapSkipsDefault(t *testing.T) {
+	args := buildVideoArgs("in.mkv", "out.mkv", VideoEncodeOptions{
+		KeepExtraStreams: true,
+		CustomFlags:      "-map 0:v:0 -map 0:a:0",
+	})
+	joined := strings.Join(args, " ")
+	if strings.Count(joined, "-map") != 2 {
+		t.Errorf("expected only custom maps, got %s", joined)
+	}
+	if strings.Contains(joined, "-c:s copy") {
+		t.Errorf("custom map should skip default subtitle copy, got %s", joined)
+	}
+}
+
+func TestBuildVideoArgsMP4KeepsAudioNotSubs(t *testing.T) {
+	args := buildVideoArgs("in.mkv", "out.mp4", VideoEncodeOptions{
+		KeepExtraStreams: true,
+		Container:        "mp4",
+		VideoCodec:       "libx265",
+	})
+	joined := strings.Join(args, " ")
+	if !strings.Contains(joined, "-map 0:v?") || !strings.Contains(joined, "-map 0:a?") {
+		t.Errorf("mp4 should map video and all audio, got %s", joined)
+	}
+	if strings.Contains(joined, "-c:s copy") {
+		t.Errorf("mp4 should not copy mkv subs, got %s", joined)
+	}
 }
 
 func TestBuildVideoArgsCopy(t *testing.T) {
 	args := buildVideoArgs("in.mkv", "out.mp4", VideoEncodeOptions{
-		VideoCodec: "copy",
-		AudioCodec: "aac",
-		Container:  "mp4",
-		CRF:        "18",
-		Preset:     "slow",
+		VideoCodec:       "copy",
+		AudioCodec:       "aac",
+		Container:        "mp4",
+		CRF:              "18",
+		Preset:           "slow",
+		KeepExtraStreams: true,
 	})
 	joined := strings.Join(args, " ")
 	if !strings.Contains(joined, "-c:v copy") {

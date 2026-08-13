@@ -13,6 +13,7 @@ type VideoEncodeOptions struct {
 	CRF, Preset, Tune, Profile    string
 	Container, CustomFlags        string
 	OriginalWidth, OriginalHeight int
+	KeepExtraStreams              bool
 }
 
 func (m *FFmpegManager) BuildVideoCmd(inputPath, outputPath string, opt VideoEncodeOptions) (*exec.Cmd, error) {
@@ -20,13 +21,37 @@ func (m *FFmpegManager) BuildVideoCmd(inputPath, outputPath string, opt VideoEnc
 	return exec.Command(m.BinaryPath, args...), nil
 }
 
-func buildVideoArgs(inputPath, outputPath string, opt VideoEncodeOptions) []string {
-	args := []string{"-i", inputPath}
+func hasMapFlag(flags string) bool {
+	for _, tok := range ShlexSplit(flags) {
+		if tok == "-map" || strings.HasPrefix(tok, "-map=") {
+			return true
+		}
+	}
+	return false
+}
 
+func extraStreamArgs(container, customFlags string, keep bool) []string {
+	if !keep || hasMapFlag(customFlags) {
+		return nil
+	}
+	if container == "mp4" {
+		return []string{"-map", "0:v?", "-map", "0:a?"}
+	}
+	return []string{"-map", "0", "-c:s", "copy", "-c:t", "copy"}
+}
+
+func buildVideoArgs(inputPath, outputPath string, opt VideoEncodeOptions) []string {
 	codec := opt.VideoCodec
 	if codec == "" {
 		codec = "libx265"
 	}
+	container := opt.Container
+	if container == "" {
+		container = "mkv"
+	}
+
+	args := []string{"-i", inputPath}
+	args = append(args, extraStreamArgs(container, opt.CustomFlags, opt.KeepExtraStreams)...)
 
 	if codec != "copy" && opt.TargetResolution != "" {
 		targetHeightStr := strings.TrimRight(strings.ToLower(opt.TargetResolution), "p")
@@ -78,10 +103,6 @@ func buildVideoArgs(inputPath, outputPath string, opt VideoEncodeOptions) []stri
 		}
 	}
 
-	container := opt.Container
-	if container == "" {
-		container = "mkv"
-	}
 	if container == "mp4" {
 		args = append(args, "-f", "mp4")
 		if codec == "libx265" {

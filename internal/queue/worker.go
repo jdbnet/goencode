@@ -240,6 +240,7 @@ func (m *Manager) runEncoder(ctx context.Context, job db.Job) error {
 			CustomFlags:      job.FFmpegFlags,
 			OriginalWidth:    w,
 			OriginalHeight:   h,
+			KeepExtraStreams: job.KeepExtraStreams,
 		})
 		if err != nil {
 			return err

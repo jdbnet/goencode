@@ -83,9 +83,15 @@
                     <option value="mp4">MP4</option>
                 </select>
             </div>
+            <div class="form-group video-only" id="keep_extra_streams_group">
+                <label class="form-check">
+                    <input type="checkbox" id="keep_extra_streams" checked>
+                    <span>Keep extra streams (subs, commentary, attachments)</span>
+                </label>
+            </div>
             <div class="form-group">
                 <label>Custom FFmpeg Flags (Optional)</label>
-                <input type="text" id="custom_ffmpeg_flags" class="form-control" placeholder="-map 0">
+                <input type="text" id="custom_ffmpeg_flags" class="form-control" placeholder="-metadata title=Movie">
             </div>
             <div class="form-group">
                 <label>Output Directory (Optional)</label>
@@ -204,6 +210,7 @@
             output_dir: document.getElementById('output_dir').value.trim(),
             delete_source: document.getElementById('delete_source').checked,
             keep_original_if_larger: document.getElementById('keep_original_if_larger').checked,
+            keep_extra_streams: isVideo ? document.getElementById('keep_extra_streams').checked : true,
         };
         if (payload.video_codec === 'copy') {
             payload.target_resolution = '';
@@ -240,6 +247,7 @@
         document.getElementById('output_dir').value = f.output_dir || '';
         document.getElementById('delete_source').checked = !!f.delete_source;
         document.getElementById('keep_original_if_larger').checked = !!f.keep_original_if_larger;
+        document.getElementById('keep_extra_streams').checked = f.keep_extra_streams !== false;
         updateCodecOptions(f.preset || '', f.tune || '', f.profile || '');
         updateFormVisibility();
         document.getElementById('folder-form-title').textContent = 'Edit Watch Folder';
@@ -259,6 +267,7 @@
         if (f.video_codec !== 'copy' && f.preset) parts.push(f.preset);
         if (f.audio_codec && f.audio_codec !== 'copy') parts.push(f.audio_codec.toUpperCase());
         parts.push((f.container || 'mkv').toUpperCase());
+        if (f.keep_extra_streams === false) parts.push('video+main audio only');
         return parts.join(' · ');
     }
 

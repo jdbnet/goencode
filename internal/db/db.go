@@ -57,6 +57,7 @@ func runMigrations() error {
 			output_dir VARCHAR(500) NULL,
 			delete_source BOOLEAN NOT NULL DEFAULT FALSE,
 			keep_original_if_larger BOOLEAN NOT NULL DEFAULT FALSE,
+			keep_extra_streams BOOLEAN NOT NULL DEFAULT TRUE,
 			created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
 			updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
 		)`,
@@ -80,6 +81,7 @@ func runMigrations() error {
 			output_dir VARCHAR(500) NULL,
 			delete_source BOOLEAN NOT NULL DEFAULT FALSE,
 			keep_original_if_larger BOOLEAN NOT NULL DEFAULT FALSE,
+			keep_extra_streams BOOLEAN NOT NULL DEFAULT TRUE,
 			force BOOLEAN NOT NULL DEFAULT FALSE,
 			created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
 			updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
@@ -106,6 +108,7 @@ func runMigrations() error {
 			output_dir VARCHAR(500) NULL,
 			delete_source BOOLEAN NOT NULL DEFAULT FALSE,
 			keep_original_if_larger BOOLEAN NOT NULL DEFAULT FALSE,
+			keep_extra_streams BOOLEAN NOT NULL DEFAULT TRUE,
 			created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 		)`,
 		`CREATE TABLE IF NOT EXISTS app_config (
@@ -216,6 +219,7 @@ func ensureEncodeSettingsColumns() error {
 		{"output_dir", "VARCHAR(500) NULL"},
 		{"delete_source", "BOOLEAN NOT NULL DEFAULT FALSE"},
 		{"keep_original_if_larger", "BOOLEAN NOT NULL DEFAULT FALSE"},
+		{"keep_extra_streams", "BOOLEAN NOT NULL DEFAULT TRUE"},
 	}
 	for _, table := range tables {
 		for _, col := range columns {

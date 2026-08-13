@@ -15,6 +15,7 @@ type EncodeSettings struct {
 	OutputDir            string `json:"output_dir"`
 	DeleteSource         bool   `json:"delete_source"`
 	KeepOriginalIfLarger bool   `json:"keep_original_if_larger"`
+	KeepExtraStreams     bool   `json:"keep_extra_streams"`
 }
 
 func (e *EncodeSettings) ApplyDefaults() {
