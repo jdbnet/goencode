@@ -152,8 +152,8 @@ func (s *Server) handleUpdateWatchFolder(w http.ResponseWriter, r *http.Request)
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
-	s.wm.Reload()
 	if pathChanged {
+		s.wm.ReplaceFolderWatch(existing.FolderPath, f.FolderPath)
 		n, err := db.DeleteJobsUnderPath(existing.FolderPath)
 		if err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)

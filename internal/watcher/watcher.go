@@ -103,6 +103,35 @@ func (m *Manager) DropPendingForFolder(folderPath string) {
 	m.dirTimersMu.Unlock()
 }
 
+func (m *Manager) ReplaceFolderWatch(oldPath, newPath string) {
+	m.scanMu.Lock()
+	defer m.scanMu.Unlock()
+
+	m.unwatchFolder(oldPath)
+	root := filepath.Clean(strings.TrimSpace(newPath))
+	if root == "" || root == "." {
+		return
+	}
+	if err := os.MkdirAll(root, 0755); err != nil {
+		log.Printf("Failed to create watch folder %s: %v", root, err)
+		return
+	}
+	log.Printf("Watching and scanning %s", root)
+	m.walkAndWatch(root, false)
+}
+
+func (m *Manager) unwatchFolder(folderPath string) {
+	folderPath = filepath.Clean(strings.TrimSpace(folderPath))
+	if folderPath == "" || folderPath == "." {
+		return
+	}
+	for _, path := range m.watcher.WatchList() {
+		if pathUnderFolder(path, folderPath) {
+			m.watcher.Remove(path)
+		}
+	}
+}
+
 func (m *Manager) periodicScanLoop() {
 	ticker := time.NewTicker(periodicScanEvery)
 	defer ticker.Stop()
