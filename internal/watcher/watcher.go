@@ -189,6 +189,12 @@ func (m *Manager) scanFolders(removeStale bool) {
 }
 
 func (m *Manager) walkAndWatch(root string, resetDebounce bool) {
+	known, err := db.KnownFilePathsUnder(root)
+	if err != nil {
+		log.Printf("Failed to load known files for %s: %v", root, err)
+		known = nil
+	}
+
 	filepath.WalkDir(root, func(path string, d os.DirEntry, err error) error {
 		if err != nil {
 			log.Printf("Error accessing path %s during scan: %v", path, err)
@@ -200,10 +206,13 @@ func (m *Manager) walkAndWatch(root string, resetDebounce bool) {
 			}
 			return nil
 		}
+		if alreadyKnown(path, known) {
+			return nil
+		}
 		if resetDebounce {
 			m.handleEvent(path)
 		} else {
-			m.handleEventIfIdle(path)
+			m.handleEventIfIdle(path, known)
 		}
 		return nil
 	})
@@ -230,6 +239,11 @@ func (m *Manager) ScanFolder(id int) (int, error) {
 		return 0, fmt.Errorf("folder not found")
 	}
 
+	known, err := db.KnownFilePathsUnder(folder.FolderPath)
+	if err != nil {
+		return 0, err
+	}
+
 	count := 0
 	err = filepath.WalkDir(folder.FolderPath, func(path string, d os.DirEntry, err error) error {
 		if err != nil {
@@ -238,6 +252,9 @@ func (m *Manager) ScanFolder(id int) (int, error) {
 		}
 		if !d.IsDir() {
 			count++
+			if alreadyKnown(path, known) {
+				return nil
+			}
 			go m.processFileImmediate(path)
 		}
 		return nil
@@ -302,7 +319,7 @@ func (m *Manager) dispatchEvent(event fsnotify.Event) {
 
 	if event.Has(fsnotify.Chmod) && !event.Has(fsnotify.Write) &&
 		!event.Has(fsnotify.Create) && !event.Has(fsnotify.Rename) {
-		m.handleEventIfIdle(event.Name)
+		m.handleEventIfIdle(event.Name, nil)
 		return
 	}
 
@@ -349,7 +366,15 @@ func (m *Manager) handleEvent(filePath string) {
 	m.scheduleProcess(filePath, true)
 }
 
-func (m *Manager) handleEventIfIdle(filePath string) {
+func alreadyKnown(filePath string, known map[string]struct{}) bool {
+	if known == nil {
+		return false
+	}
+	_, ok := known[filepath.Clean(filePath)]
+	return ok
+}
+
+func (m *Manager) handleEventIfIdle(filePath string, known map[string]struct{}) {
 	if shouldIgnoreFile(filePath) {
 		return
 	}
@@ -362,13 +387,19 @@ func (m *Manager) handleEventIfIdle(filePath string) {
 		return
 	}
 
-	already, err := db.IsFileAlreadyProcessedOrQueued(filePath)
-	if err != nil {
-		log.Printf("Error checking DB for %s: %v", filePath, err)
-		return
-	}
-	if already {
-		return
+	if known != nil {
+		if _, ok := known[filePath]; ok {
+			return
+		}
+	} else {
+		already, err := db.IsFileAlreadyProcessedOrQueued(filePath)
+		if err != nil {
+			log.Printf("Error checking DB for %s: %v", filePath, err)
+			return
+		}
+		if already {
+			return
+		}
 	}
 
 	m.scheduleProcess(filePath, false)
@@ -420,6 +451,8 @@ func (m *Manager) processFile(filePath string, waitForStable bool) {
 	if shouldIgnoreFile(filePath) {
 		return
 	}
+
+	filePath = filepath.Clean(filePath)
 
 	if waitForStable {
 		var lastSize int64 = info.Size()

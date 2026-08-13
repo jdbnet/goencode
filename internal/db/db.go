@@ -125,8 +125,47 @@ func runMigrations() error {
 	if err := ensureEncodeSettingsColumns(); err != nil {
 		return err
 	}
+	if err := ensureFilePathIndexes(); err != nil {
+		return err
+	}
 
 	log.Println("Database schemas initialized")
+	return nil
+}
+
+func ensureFilePathIndexes() error {
+	indexes := []struct {
+		table string
+		name  string
+	}{
+		{"jobs", "idx_jobs_file_path"},
+		{"job_reports", "idx_job_reports_file_path"},
+	}
+	for _, idx := range indexes {
+		if err := ensureIndex(idx.table, idx.name, fmt.Sprintf("CREATE INDEX `%s` ON `%s` (file_path)", idx.name, idx.table)); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func ensureIndex(table, name, ddl string) error {
+	var count int
+	err := DB.QueryRow(`
+		SELECT COUNT(*) FROM information_schema.STATISTICS
+		WHERE TABLE_SCHEMA = DATABASE()
+		  AND TABLE_NAME = ?
+		  AND INDEX_NAME = ?
+	`, table, name).Scan(&count)
+	if err != nil {
+		return fmt.Errorf("migration failed: check index %s.%s: %w", table, name, err)
+	}
+	if count == 0 {
+		if _, err := DB.Exec(ddl); err != nil {
+			return fmt.Errorf("migration failed: add index %s: %w", name, err)
+		}
+		log.Printf("Migrated %s: added index %s", table, name)
+	}
 	return nil
 }
 

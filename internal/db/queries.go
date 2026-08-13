@@ -191,9 +191,49 @@ func SetWatchFolderEnabled(id int, enabled bool) error {
 	return err
 }
 
+func escapeLike(s string) string {
+	s = strings.ReplaceAll(s, `\`, `\\`)
+	s = strings.ReplaceAll(s, `%`, `\%`)
+	s = strings.ReplaceAll(s, `_`, `\_`)
+	return s
+}
+
+func pathPrefixFilter(folderPath string) (exact, like string) {
+	exact = filepath.Clean(strings.TrimSpace(folderPath))
+	return exact, escapeLike(exact) + "/%"
+}
+
+func collectFilePaths(query string, args ...interface{}) (map[string]struct{}, error) {
+	rows, err := DB.Query(query, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	paths := make(map[string]struct{})
+	for rows.Next() {
+		var p string
+		if err := rows.Scan(&p); err != nil {
+			return nil, err
+		}
+		paths[filepath.Clean(p)] = struct{}{}
+	}
+	return paths, rows.Err()
+}
+
+func KnownFilePathsUnder(folderPath string) (map[string]struct{}, error) {
+	exact, like := pathPrefixFilter(folderPath)
+	return collectFilePaths(
+		`SELECT file_path FROM jobs WHERE file_path = ? OR file_path LIKE ? ESCAPE '\\'
+		 UNION
+		 SELECT file_path FROM job_reports WHERE file_path = ? OR file_path LIKE ? ESCAPE '\\'`,
+		exact, like, exact, like,
+	)
+}
+
 func DeleteJobsUnderPath(folderPath string) (int64, error) {
-	folderPath = filepath.Clean(strings.TrimSpace(folderPath))
-	res, err := DB.Exec(`DELETE FROM jobs WHERE file_path = ? OR file_path LIKE ?`, folderPath, folderPath+"/%")
+	exact, like := pathPrefixFilter(folderPath)
+	res, err := DB.Exec(`DELETE FROM jobs WHERE file_path = ? OR file_path LIKE ? ESCAPE '\\'`, exact, like)
 	if err != nil {
 		return 0, err
 	}
@@ -279,20 +319,17 @@ func MarkProcessingAsFailed() error {
 }
 
 func IsFileAlreadyProcessedOrQueued(filePath string) (bool, error) {
-	var count int
-	err := DB.QueryRow(`SELECT COUNT(*) FROM jobs WHERE file_path = ?`, filePath).Scan(&count)
+	var exists int
+	err := DB.QueryRow(`
+		SELECT EXISTS(
+			SELECT 1 FROM jobs WHERE file_path = ?
+			UNION ALL
+			SELECT 1 FROM job_reports WHERE file_path = ?
+		)`, filePath, filePath).Scan(&exists)
 	if err != nil {
 		return false, err
 	}
-	if count > 0 {
-		return true, nil
-	}
-
-	err = DB.QueryRow(`SELECT COUNT(*) FROM job_reports WHERE file_path = ?`, filePath).Scan(&count)
-	if err != nil {
-		return false, err
-	}
-	return count > 0, nil
+	return exists == 1, nil
 }
 
 func AddJobReport(j Job, status string, encodedSize int64, sizeSaved int64, processingTime float64) error {
