@@ -205,11 +205,17 @@ func (m *Manager) runEncoder(ctx context.Context, job db.Job) error {
 	var cmdErr error
 	var execCmd *exec.Cmd
 
+	if job.Force {
+		log.Printf("Force encoding job %d, skip checks disabled", job.ID)
+	}
+
 	if job.MediaType == "video" {
-		if skip, reason := encoder.CheckVideoSkip(job.FilePath, job.TargetResolution, job.VideoCodec); skip {
-			log.Printf("Skipping video %d - %s", job.ID, reason)
-			job.ErrorMessage = reason
-			return db.AddJobReport(job, "skipped", originalSize, 0, 0)
+		if !job.Force {
+			if skip, reason := encoder.CheckVideoSkip(job.FilePath, job.TargetResolution, job.VideoCodec); skip {
+				log.Printf("Skipping video %d - %s", job.ID, reason)
+				job.ErrorMessage = reason
+				return db.AddJobReport(job, "skipped", originalSize, 0, 0)
+			}
 		}
 
 		w, h, err := m.encoder.ProbeResolution(job.FilePath)
@@ -239,10 +245,12 @@ func (m *Manager) runEncoder(ctx context.Context, job db.Job) error {
 			return err
 		}
 	} else {
-		if skip, reason := encoder.CheckAudioSkip(job.FilePath); skip {
-			log.Printf("Skipping audio %d - %s", job.ID, reason)
-			job.ErrorMessage = reason
-			return db.AddJobReport(job, "skipped", originalSize, 0, 0)
+		if !job.Force {
+			if skip, reason := encoder.CheckAudioSkip(job.FilePath); skip {
+				log.Printf("Skipping audio %d - %s", job.ID, reason)
+				job.ErrorMessage = reason
+				return db.AddJobReport(job, "skipped", originalSize, 0, 0)
+			}
 		}
 
 		log.Printf("Copying %s to %s before encoding...", job.FilePath, tempInPath)

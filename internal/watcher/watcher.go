@@ -219,7 +219,7 @@ func (m *Manager) walkAndWatch(root string, resetDebounce bool) {
 }
 
 // ScanFolder immediately scans all files in a watch folder, skipping debounce and stability waits.
-func (m *Manager) ScanFolder(id int) (int, error) {
+func (m *Manager) ScanFolder(id int, force bool) (int, error) {
 	folders, err := db.GetWatchFolders()
 	if err != nil {
 		return 0, err
@@ -239,7 +239,12 @@ func (m *Manager) ScanFolder(id int) (int, error) {
 		return 0, fmt.Errorf("folder not found")
 	}
 
-	known, err := db.KnownFilePathsUnder(folder.FolderPath)
+	var known map[string]struct{}
+	if force {
+		known, err = db.QueuedFilePathsUnder(folder.FolderPath)
+	} else {
+		known, err = db.KnownFilePathsUnder(folder.FolderPath)
+	}
 	if err != nil {
 		return 0, err
 	}
@@ -255,7 +260,7 @@ func (m *Manager) ScanFolder(id int) (int, error) {
 			if alreadyKnown(path, known) {
 				return nil
 			}
-			go m.processFileImmediate(path)
+			go m.processFileImmediate(path, force)
 		}
 		return nil
 	})
@@ -263,7 +268,11 @@ func (m *Manager) ScanFolder(id int) (int, error) {
 		return count, err
 	}
 
-	log.Printf("Manual scan started for %s (%d files)", folder.FolderPath, count)
+	if force {
+		log.Printf("Force re-encode started for %s (%d files)", folder.FolderPath, count)
+	} else {
+		log.Printf("Manual scan started for %s (%d files)", folder.FolderPath, count)
+	}
 	return count, nil
 }
 
@@ -357,7 +366,7 @@ func (m *Manager) processWorker() {
 		case <-m.stopChan:
 			return
 		case path := <-m.processChan:
-			go m.processFile(path, true)
+			go m.processFile(path, true, false)
 		}
 	}
 }
@@ -438,11 +447,11 @@ func (m *Manager) scheduleProcess(filePath string, reset bool) {
 	})
 }
 
-func (m *Manager) processFileImmediate(filePath string) {
-	m.processFile(filePath, false)
+func (m *Manager) processFileImmediate(filePath string, force bool) {
+	m.processFile(filePath, false, force)
 }
 
-func (m *Manager) processFile(filePath string, waitForStable bool) {
+func (m *Manager) processFile(filePath string, waitForStable bool, force bool) {
 	info, err := os.Stat(filePath)
 	if err != nil || info.IsDir() {
 		return
@@ -484,12 +493,17 @@ func (m *Manager) processFile(filePath string, waitForStable bool) {
 		}
 	}
 
-	alreadyInQueue, err := db.IsFileAlreadyProcessedOrQueued(filePath)
+	var already bool
+	if force {
+		already, err = db.IsFileQueued(filePath)
+	} else {
+		already, err = db.IsFileAlreadyProcessedOrQueued(filePath)
+	}
 	if err != nil {
 		log.Printf("Error checking DB for %s: %v", filePath, err)
 		return
 	}
-	if alreadyInQueue {
+	if already {
 		return
 	}
 
@@ -498,24 +512,32 @@ func (m *Manager) processFile(filePath string, waitForStable bool) {
 		return
 	}
 
-	if skip, reason := checkSkip(filePath, match); skip {
-		job := match.NewJob(filePath, info.Size(), 0)
-		job.ErrorMessage = reason
-		if err := db.AddJobReport(job, "skipped", info.Size(), 0, 0); err != nil {
-			log.Printf("Failed to record skip for %s: %v", filePath, err)
+	if !force {
+		if skip, reason := checkSkip(filePath, match); skip {
+			job := match.NewJob(filePath, info.Size(), 0)
+			job.ErrorMessage = reason
+			if err := db.AddJobReport(job, "skipped", info.Size(), 0, 0); err != nil {
+				log.Printf("Failed to record skip for %s: %v", filePath, err)
+				return
+			}
+			log.Printf("Skipped %s: %s", filePath, reason)
 			return
 		}
-		log.Printf("Skipped %s: %s", filePath, reason)
-		return
 	}
 
-	err = db.AddJob(match.NewJob(filePath, info.Size(), 0))
+	job := match.NewJob(filePath, info.Size(), 0)
+	job.Force = force
+	err = db.AddJob(job)
 	if err != nil {
 		log.Printf("Failed to add job for %s: %v", filePath, err)
 		return
 	}
 
-	log.Printf("Added job for %s", filePath)
+	if force {
+		log.Printf("Added force job for %s", filePath)
+	} else {
+		log.Printf("Added job for %s", filePath)
+	}
 	m.queueManager.NotifySSE("job_added", nil)
 	m.queueManager.Trigger()
 }

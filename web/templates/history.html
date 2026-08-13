@@ -59,7 +59,9 @@
                     <td>{{.CreatedAt.Format "Jan 02, 15:04:05"}}</td>
                     <td>
                         {{if eq .Status "failed"}}
-                        <button class="btn btn-sm btn-outline" onclick="requeueJob({{.ID}})">Requeue</button>
+                        <button class="btn btn-sm btn-outline" onclick="requeueJob({{.ID}}, true)">Requeue</button>
+                        {{else}}
+                        <button class="btn btn-sm btn-outline" onclick="requeueJob({{.ID}}, false)">Re-encode</button>
                         {{end}}
                     </td>
                 </tr>
@@ -136,8 +138,11 @@ function filterHistory() {
     document.getElementById("record-count").textContent = filter ? visibleCount : "{{.Total}}";
 }
 
-async function requeueJob(id) {
-    if (!confirm("Requeue this failed job?")) return;
+async function requeueJob(id, failed) {
+    const msg = failed
+        ? 'Requeue this failed job with current folder settings?'
+        : 'Queue this file again with current folder settings? Skip checks will be ignored.';
+    if (!confirm(msg)) return;
     try {
         const res = await fetch('/api/jobs/requeue/' + id, { method: 'POST' });
         if (res.ok) {

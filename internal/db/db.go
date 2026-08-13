@@ -80,6 +80,7 @@ func runMigrations() error {
 			output_dir VARCHAR(500) NULL,
 			delete_source BOOLEAN NOT NULL DEFAULT FALSE,
 			keep_original_if_larger BOOLEAN NOT NULL DEFAULT FALSE,
+			force BOOLEAN NOT NULL DEFAULT FALSE,
 			created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
 			updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
 		)`,
@@ -123,6 +124,9 @@ func runMigrations() error {
 		return err
 	}
 	if err := ensureEncodeSettingsColumns(); err != nil {
+		return err
+	}
+	if err := ensureColumn("jobs", "force", "BOOLEAN NOT NULL DEFAULT FALSE"); err != nil {
 		return err
 	}
 	if err := ensureFilePathIndexes(); err != nil {

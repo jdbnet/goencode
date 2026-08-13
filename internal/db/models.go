@@ -75,6 +75,7 @@ type Job struct {
 	FFmpegFlags      string `json:"ffmpeg_flags"`
 	ErrorMessage     string `json:"error_message"`
 	EncodeSettings
+	Force     bool      `json:"force"`
 	CreatedAt time.Time `json:"created_at"`
 	UpdatedAt time.Time `json:"updated_at"`
 }

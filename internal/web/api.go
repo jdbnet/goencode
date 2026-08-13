@@ -266,7 +266,8 @@ func (s *Server) handleScanWatchFolder(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Invalid ID", http.StatusBadRequest)
 		return
 	}
-	count, err := s.wm.ScanFolder(id)
+	force := r.URL.Query().Get("force") == "1" || strings.EqualFold(r.URL.Query().Get("force"), "true")
+	count, err := s.wm.ScanFolder(id, force)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
@@ -274,6 +275,34 @@ func (s *Server) handleScanWatchFolder(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]interface{}{
 		"files_scanned": count,
+		"force":         force,
+	})
+}
+
+func (s *Server) handleClearFolderHistory(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost && r.Method != http.MethodDelete {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	id, err := strconv.Atoi(strings.TrimPrefix(r.URL.Path, "/api/folders/clear-history/"))
+	if err != nil {
+		http.Error(w, "Invalid ID", http.StatusBadRequest)
+		return
+	}
+	folder, err := db.GetWatchFolderByID(id)
+	if err != nil {
+		http.Error(w, "Folder not found", http.StatusNotFound)
+		return
+	}
+	n, err := db.DeleteJobReportsUnderPath(folder.FolderPath)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	log.Printf("Cleared %d job reports for %s", n, folder.FolderPath)
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"deleted": n,
 	})
 }
 
@@ -294,12 +323,17 @@ func (s *Server) handleRequeueJob(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if report.Status != "failed" {
-		http.Error(w, "Can only requeue failed jobs", http.StatusBadRequest)
+	queued, err := db.IsFileQueued(report.FilePath)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	if queued {
+		http.Error(w, "File is already in the queue", http.StatusConflict)
 		return
 	}
 
-	err = db.AddJob(db.Job{
+	job := db.Job{
 		FilePath:         report.FilePath,
 		MediaType:        report.MediaType,
 		Priority:         5,
@@ -307,14 +341,22 @@ func (s *Server) handleRequeueJob(w http.ResponseWriter, r *http.Request) {
 		TargetResolution: report.TargetResolution,
 		FFmpegFlags:      report.FFmpegFlags,
 		EncodeSettings:   report.EncodeSettings,
-	})
+		Force:            true,
+	}
+	if folder, ok := db.FolderContaining(report.FilePath); ok {
+		job = folder.NewJob(report.FilePath, report.OriginalSize, 5)
+		job.Force = true
+	}
+
+	err = db.AddJob(job)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
 
-	// Delete the failed report so it doesn't show up in history as failed anymore
-	_ = db.DeleteJobReport(id)
+	if report.Status == "failed" {
+		_ = db.DeleteJobReport(id)
+	}
 
 	s.qm.NotifySSE("queue_updated", nil)
 	s.qm.NotifySSE("job_added", nil)

@@ -24,3 +24,15 @@ func TestEscapeLikeBackslash(t *testing.T) {
 		t.Fatalf("escapeLike = %q, want %q", got, want)
 	}
 }
+
+func TestPathUnderFolder(t *testing.T) {
+	if !PathUnderFolder("/media/tv/show.mkv", "/media/tv") {
+		t.Fatal("expected nested file to match")
+	}
+	if PathUnderFolder("/media/tv2/show.mkv", "/media/tv") {
+		t.Fatal("prefix must not match sibling folder")
+	}
+	if !PathUnderFolder("/media/tv", "/media/tv") {
+		t.Fatal("folder itself should match")
+	}
+}

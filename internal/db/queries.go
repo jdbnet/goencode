@@ -8,7 +8,7 @@ import (
 
 const folderSelectCols = `id, folder_path, media_type, target_resolution, custom_ffmpeg_flags, enabled, video_codec, audio_codec, crf, preset, tune, profile, container, output_dir, delete_source, keep_original_if_larger, created_at, updated_at`
 
-const jobSelectCols = `id, file_path, media_type, status, priority, original_size, target_resolution, ffmpeg_flags, error_message, video_codec, audio_codec, crf, preset, tune, profile, container, output_dir, delete_source, keep_original_if_larger, created_at, updated_at`
+const jobSelectCols = `id, file_path, media_type, status, priority, original_size, target_resolution, ffmpeg_flags, error_message, video_codec, audio_codec, crf, preset, tune, profile, container, output_dir, delete_source, keep_original_if_larger, force, created_at, updated_at`
 
 const reportSelectCols = `id, file_path, media_type, status, original_size, encoded_size, size_saved, processing_time, target_resolution, ffmpeg_flags, error_message, video_codec, audio_codec, crf, preset, tune, profile, container, output_dir, delete_source, keep_original_if_larger, created_at`
 
@@ -97,7 +97,7 @@ func scanJob(scan func(dest ...interface{}) error) (Job, error) {
 	err := scan(
 		&j.ID, &j.FilePath, &j.MediaType, &j.Status, &j.Priority, &j.OriginalSize, &targetRes, &ffmpegFlags, &errMsg,
 		&videoCodec, &audioCodec, &crf, &preset, &tune, &profile, &container, &outputDir,
-		&j.DeleteSource, &j.KeepOriginalIfLarger,
+		&j.DeleteSource, &j.KeepOriginalIfLarger, &j.Force,
 		&j.CreatedAt, &j.UpdatedAt,
 	)
 	if err != nil {
@@ -231,9 +231,62 @@ func KnownFilePathsUnder(folderPath string) (map[string]struct{}, error) {
 	)
 }
 
+func QueuedFilePathsUnder(folderPath string) (map[string]struct{}, error) {
+	exact, like := pathPrefixFilter(folderPath)
+	return collectFilePaths(
+		`SELECT file_path FROM jobs WHERE file_path = ? OR file_path LIKE ? ESCAPE '\\'`,
+		exact, like,
+	)
+}
+
+func PathUnderFolder(path, folder string) bool {
+	path = filepath.Clean(path)
+	folder = filepath.Clean(strings.TrimSpace(folder))
+	if path == folder {
+		return true
+	}
+	if folder == string(filepath.Separator) {
+		return strings.HasPrefix(path, folder)
+	}
+	return strings.HasPrefix(path, folder+string(filepath.Separator))
+}
+
+func FolderContaining(filePath string) (WatchFolder, bool) {
+	filePath = filepath.Clean(filePath)
+	folders, err := GetWatchFolders()
+	if err != nil {
+		return WatchFolder{}, false
+	}
+	var best WatchFolder
+	bestLen := -1
+	for _, f := range folders {
+		if !f.Enabled {
+			continue
+		}
+		folderPath := filepath.Clean(strings.TrimSpace(f.FolderPath))
+		if !PathUnderFolder(filePath, folderPath) {
+			continue
+		}
+		if len(folderPath) > bestLen {
+			best = f
+			bestLen = len(folderPath)
+		}
+	}
+	return best, bestLen >= 0
+}
+
 func DeleteJobsUnderPath(folderPath string) (int64, error) {
 	exact, like := pathPrefixFilter(folderPath)
 	res, err := DB.Exec(`DELETE FROM jobs WHERE file_path = ? OR file_path LIKE ? ESCAPE '\\'`, exact, like)
+	if err != nil {
+		return 0, err
+	}
+	return res.RowsAffected()
+}
+
+func DeleteJobReportsUnderPath(folderPath string) (int64, error) {
+	exact, like := pathPrefixFilter(folderPath)
+	res, err := DB.Exec(`DELETE FROM job_reports WHERE file_path = ? OR file_path LIKE ? ESCAPE '\\'`, exact, like)
 	if err != nil {
 		return 0, err
 	}
@@ -244,7 +297,8 @@ func AddJob(j Job) error {
 	j.EncodeSettings.ApplyDefaults()
 	args := []interface{}{j.FilePath, j.MediaType, j.Priority, nullStr(j.TargetResolution), nullStr(j.FFmpegFlags), j.OriginalSize}
 	args = append(args, encodeInsertArgs(j.EncodeSettings)...)
-	_, err := DB.Exec(`INSERT INTO jobs (file_path, media_type, priority, target_resolution, ffmpeg_flags, original_size, video_codec, audio_codec, crf, preset, tune, profile, container, output_dir, delete_source, keep_original_if_larger) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`, args...)
+	args = append(args, j.Force)
+	_, err := DB.Exec(`INSERT INTO jobs (file_path, media_type, priority, target_resolution, ffmpeg_flags, original_size, video_codec, audio_codec, crf, preset, tune, profile, container, output_dir, delete_source, keep_original_if_larger, force) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`, args...)
 	return err
 }
 
@@ -316,6 +370,15 @@ func DeleteJob(id int) error {
 func MarkProcessingAsFailed() error {
 	_, err := DB.Exec(`UPDATE jobs SET status = 'failed', error_message = 'Interrupted by server restart' WHERE status = 'processing'`)
 	return err
+}
+
+func IsFileQueued(filePath string) (bool, error) {
+	var exists int
+	err := DB.QueryRow(`SELECT EXISTS(SELECT 1 FROM jobs WHERE file_path = ?)`, filePath).Scan(&exists)
+	if err != nil {
+		return false, err
+	}
+	return exists == 1, nil
 }
 
 func IsFileAlreadyProcessedOrQueued(filePath string) (bool, error) {

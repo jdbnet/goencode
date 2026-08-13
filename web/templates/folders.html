@@ -289,7 +289,9 @@
                 <td>
                     <div class="folder-actions">
                         <button class="btn btn-sm btn-outline" onclick="editFolder(${f.id})">Edit</button>
-                        <button class="btn btn-sm btn-outline" ${f.enabled ? '' : 'disabled'} onclick="scanFolder(${f.id}, this)">Scan Now</button>
+                        <button class="btn btn-sm btn-outline" ${f.enabled ? '' : 'disabled'} onclick="scanFolder(${f.id}, this, false)">Scan Now</button>
+                        <button class="btn btn-sm btn-outline" ${f.enabled ? '' : 'disabled'} onclick="scanFolder(${f.id}, this, true)">Re-encode</button>
+                        <button class="btn btn-sm btn-outline" onclick="clearFolderHistory(${f.id})">Clear history</button>
                         <button class="btn btn-sm btn-danger" onclick="deleteFolder(${f.id})">Delete</button>
                     </div>
                 </td>
@@ -350,15 +352,19 @@
         }
     }
 
-    async function scanFolder(id, btn) {
+    async function scanFolder(id, btn, force) {
+        if (force && !confirm('Queue all files in this folder with the current encode settings, including files already in history. Skip checks (already HEVC, etc.) will be ignored. Continue?')) {
+            return;
+        }
         const originalText = btn.textContent;
         btn.disabled = true;
-        btn.textContent = 'Scanning...';
+        btn.textContent = force ? 'Queueing...' : 'Scanning...';
         try {
-            const res = await fetch('/api/folders/scan/' + id, { method: 'POST' });
+            const url = '/api/folders/scan/' + id + (force ? '?force=1' : '');
+            const res = await fetch(url, { method: 'POST' });
             if (res.ok) {
                 const data = await res.json();
-                btn.textContent = `Scanning ${data.files_scanned} files...`;
+                btn.textContent = force ? `Queued ${data.files_scanned} files...` : `Scanning ${data.files_scanned} files...`;
                 setTimeout(() => {
                     btn.disabled = false;
                     btn.textContent = originalText;
@@ -372,6 +378,19 @@
             alert('Error: ' + e.message);
             btn.disabled = false;
             btn.textContent = originalText;
+        }
+    }
+
+    async function clearFolderHistory(id) {
+        if (!confirm('Delete job history for this folder? Media files are not deleted.')) {
+            return;
+        }
+        const res = await fetch('/api/folders/clear-history/' + id, { method: 'POST' });
+        if (res.ok) {
+            const data = await res.json();
+            alert('Deleted ' + (data.deleted || 0) + ' history records.');
+        } else {
+            alert('Failed to clear history: ' + await res.text());
         }
     }
 
