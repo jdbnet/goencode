@@ -15,7 +15,7 @@ GoEncode is a lightweight, high-performance media transcoding server written in 
 - **Format Intelligence**: Probes media to detect codecs and resolution, automatically skipping files that already meet the target codec/resolution.
 - **Web Dashboard**: Modern, responsive interface with Server-Sent Events (SSE) for live tracking of job progress, queue stats, and server logs.
 - **Robust Persistence**: Job history, metrics (size saved, time taken), and configuration are all saved to a MariaDB/MySQL database.
-- **Webhook Notifications**: Optional integration to send a JSON webhook payload when an encoding job fails.
+- **Notifications**: Optional ntfy, Discord, Gotify, or generic JSON webhooks on encode success, skip, and failure. Success messages include size saved so you can see when a job actually paid off.
 - **Docker-Ready**: Packaged in an ultra-slim container image based on Debian, with `ffmpeg` built-in.
 
 ## Deployment with Docker
@@ -51,8 +51,13 @@ services:
       # Web UI Authentication (Optional)
       - GOENCODE_AUTH_USER=admin
       - GOENCODE_AUTH_PASS=secret
-      # Notifications (Optional)
+      # Notifications (Optional). Default events: success, skip, failed
       - GOENCODE_WEBHOOK_URL=http://your-webhook-endpoint.com/webhook
+      # - GOENCODE_NTFY_URL=https://ntfy.sh/goencode
+      # - GOENCODE_DISCORD_WEBHOOK_URL=https://discord.com/api/webhooks/id/token
+      # - GOENCODE_GOTIFY_URL=https://gotify.example.com
+      # - GOENCODE_GOTIFY_TOKEN=app-token
+      # - GOENCODE_NOTIFY_EVENTS=success,skip,failed
     volumes:
       - /path/to/your/media:/media
     depends_on:
@@ -102,8 +107,16 @@ GoEncode can be configured via `goencode.yaml` or entirely via environment varia
 | `TZ` | Container TimeZone | `UTC` |
 | `GOENCODE_AUTH_USER` | Username for the web UI | |
 | `GOENCODE_AUTH_PASS` | Password for the web UI | |
-| `GOENCODE_WEBHOOK_URL` | Webhook URL for job failure notifications | |
+| `GOENCODE_WEBHOOK_URL` | Generic JSON webhook (or a Discord webhook URL) | |
+| `GOENCODE_NTFY_URL` | ntfy topic URL, e.g. `https://ntfy.sh/mytopic` | |
+| `GOENCODE_NTFY_TOKEN` | Optional ntfy access token | |
+| `GOENCODE_DISCORD_WEBHOOK_URL` | Discord incoming webhook URL | |
+| `GOENCODE_GOTIFY_URL` | Gotify server URL | |
+| `GOENCODE_GOTIFY_TOKEN` | Gotify application token | |
+| `GOENCODE_NOTIFY_EVENTS` | Comma-separated events: `success`, `skip`, `failed` | `success,skip,failed` |
 | `GOENCODE_ENCODER_TEMP` | Temp directory for processing jobs | `/tmp/goencode` |
 | `GOENCODE_ENCODER_WORKERS` | Concurrent encode jobs (1-16) | `1` |
 | `GOENCODE_ENCODER_MIN_FREE_GB` | Abort encode if temp or output filesystem would drop below this many GB (also refuses copies larger than free space) | `5` |
 | `GOENCODE_NO_UPDATE` | Set to `1` or `true` to disable binary auto-update on startup | |
+
+Success notifications include the filename and size saved (for example `Saved 40.0 GB`). Skip notifications fire when a queued job is skipped (already the target codec, or encoded file was larger). Files skipped during a folder scan are not notified, so a library scan does not flood your phone. Use `GOENCODE_NOTIFY_EVENTS=failed` to keep failure-only alerts.

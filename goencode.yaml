@@ -22,3 +22,16 @@ encoder:
 
 logging:
   level: "info"
+
+# notifications:
+#   events: [success, skip, failed]
+#   webhook_url: "https://example.com/webhook"
+#   ntfy:
+#     url: "https://ntfy.sh/goencode"
+#     token: ""
+#   discord:
+#     webhook_url: "https://discord.com/api/webhooks/..."
+#   gotify:
+#     url: "https://gotify.example.com"
+#     token: ""
+

@@ -11,6 +11,7 @@ import (
 	"goencode/internal/config"
 	"goencode/internal/db"
 	"goencode/internal/logger"
+	"goencode/internal/notify"
 	"goencode/internal/queue"
 	"goencode/internal/updater"
 	"goencode/internal/watcher"
@@ -51,7 +52,16 @@ func main() {
 		}
 	}
 
-	qm := queue.NewManager(cfg.Encoder.FFmpegPath, cfg.Encoder.TempDir, cfg.Notifications.WebhookURL, cfg.Encoder.Workers, loc, sseServer.Broadcast)
+	qm := queue.NewManager(cfg.Encoder.FFmpegPath, cfg.Encoder.TempDir, cfg.Encoder.Workers, loc, sseServer.Broadcast)
+	qm.Notifier = notify.New(notify.Options{
+		Events:         cfg.Notifications.Events,
+		WebhookURL:     cfg.Notifications.WebhookURL,
+		NtfyURL:        cfg.Notifications.Ntfy.URL,
+		NtfyToken:      cfg.Notifications.Ntfy.Token,
+		DiscordWebhook: cfg.Notifications.Discord.WebhookURL,
+		GotifyURL:      cfg.Notifications.Gotify.URL,
+		GotifyToken:    cfg.Notifications.Gotify.Token,
+	})
 	qm.MinFreeBytes = int64(cfg.Encoder.MinFreeGB) * 1024 * 1024 * 1024
 	qm.Start()
 	defer qm.Stop()

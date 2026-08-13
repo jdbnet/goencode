@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"strconv"
+	"strings"
 
 	"gopkg.in/yaml.v3"
 )
@@ -81,8 +82,26 @@ type AuthConfig struct {
 	Password string `yaml:"password"`
 }
 
-type NotificationsConfig struct {
+type NtfyConfig struct {
+	URL   string `yaml:"url"`
+	Token string `yaml:"token"`
+}
+
+type DiscordConfig struct {
 	WebhookURL string `yaml:"webhook_url"`
+}
+
+type GotifyConfig struct {
+	URL   string `yaml:"url"`
+	Token string `yaml:"token"`
+}
+
+type NotificationsConfig struct {
+	Events     []string      `yaml:"events"`
+	WebhookURL string        `yaml:"webhook_url"`
+	Ntfy       NtfyConfig    `yaml:"ntfy"`
+	Discord    DiscordConfig `yaml:"discord"`
+	Gotify     GotifyConfig  `yaml:"gotify"`
 }
 
 type Config struct {
@@ -121,6 +140,14 @@ func LoadConfig(path string) (*Config, error) {
 	cfg.Encoder.MinFreeGB = getEnvInt("GOENCODE_ENCODER_MIN_FREE_GB", cfg.Encoder.MinFreeGB)
 	cfg.Logging.Level = getEnvStr("GOENCODE_LOG_LEVEL", cfg.Logging.Level)
 	cfg.Notifications.WebhookURL = getEnvStr("GOENCODE_WEBHOOK_URL", cfg.Notifications.WebhookURL)
+	cfg.Notifications.Ntfy.URL = getEnvStr("GOENCODE_NTFY_URL", cfg.Notifications.Ntfy.URL)
+	cfg.Notifications.Ntfy.Token = getEnvStr("GOENCODE_NTFY_TOKEN", cfg.Notifications.Ntfy.Token)
+	cfg.Notifications.Discord.WebhookURL = getEnvStr("GOENCODE_DISCORD_WEBHOOK_URL", cfg.Notifications.Discord.WebhookURL)
+	cfg.Notifications.Gotify.URL = getEnvStr("GOENCODE_GOTIFY_URL", cfg.Notifications.Gotify.URL)
+	cfg.Notifications.Gotify.Token = getEnvStr("GOENCODE_GOTIFY_TOKEN", cfg.Notifications.Gotify.Token)
+	if events := os.Getenv("GOENCODE_NOTIFY_EVENTS"); events != "" {
+		cfg.Notifications.Events = splitCSV(events)
+	}
 
 	// Defaults if missing entirely
 	if cfg.Server.Port == 0 {
@@ -150,4 +177,15 @@ func LoadConfig(path string) (*Config, error) {
 	}
 
 	return &cfg, nil
+}
+
+func splitCSV(s string) []string {
+	var out []string
+	for _, part := range strings.Split(s, ",") {
+		part = strings.TrimSpace(part)
+		if part != "" {
+			out = append(out, part)
+		}
+	}
+	return out
 }

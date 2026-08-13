@@ -73,3 +73,26 @@ func TestEncoderWorkersDefault(t *testing.T) {
 		t.Fatalf("MinFreeGB = %d, want 5", cfg.Encoder.MinFreeGB)
 	}
 }
+
+func TestNotifyEventsEnv(t *testing.T) {
+	t.Setenv("GOENCODE_NOTIFY_EVENTS", "failed, success")
+	t.Setenv("GOENCODE_NTFY_URL", "https://ntfy.sh/goencode")
+	t.Setenv("GOENCODE_NTFY_TOKEN", "tk_test")
+	t.Setenv("GOENCODE_DISCORD_WEBHOOK_URL", "https://discord.com/api/webhooks/1/abc")
+	t.Setenv("GOENCODE_GOTIFY_URL", "https://gotify.example")
+	t.Setenv("GOENCODE_GOTIFY_TOKEN", "app")
+
+	cfg, err := LoadConfig("does-not-exist.yaml")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(cfg.Notifications.Events) != 2 || cfg.Notifications.Events[0] != "failed" || cfg.Notifications.Events[1] != "success" {
+		t.Fatalf("Events = %#v", cfg.Notifications.Events)
+	}
+	if cfg.Notifications.Ntfy.URL != "https://ntfy.sh/goencode" || cfg.Notifications.Ntfy.Token != "tk_test" {
+		t.Fatalf("ntfy = %+v", cfg.Notifications.Ntfy)
+	}
+	if cfg.Notifications.Discord.WebhookURL == "" || cfg.Notifications.Gotify.Token != "app" {
+		t.Fatalf("discord/gotify = %+v %+v", cfg.Notifications.Discord, cfg.Notifications.Gotify)
+	}
+}

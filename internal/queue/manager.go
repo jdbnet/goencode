@@ -12,6 +12,7 @@ import (
 
 	"goencode/internal/db"
 	"goencode/internal/encoder"
+	"goencode/internal/notify"
 )
 
 const maxWorkers = 16
@@ -30,7 +31,7 @@ type Manager struct {
 	TriggerChan  chan struct{}
 	StopChan     chan struct{}
 	Broadcast    func(string, interface{})
-	WebhookURL   string
+	Notifier     notify.Notifier
 	MinFreeBytes int64
 	encoder      *encoder.FFmpegManager
 
@@ -55,7 +56,7 @@ func clampWorkers(n int) int {
 	return n
 }
 
-func NewManager(ffmpegPath, tempDir, webhookURL string, workers int, loc *time.Location, broadcast func(string, interface{})) *Manager {
+func NewManager(ffmpegPath, tempDir string, workers int, loc *time.Location, broadcast func(string, interface{})) *Manager {
 	if loc == nil {
 		loc = time.Local
 	}
@@ -66,7 +67,6 @@ func NewManager(ffmpegPath, tempDir, webhookURL string, workers int, loc *time.L
 		TriggerChan:  make(chan struct{}, 1),
 		StopChan:     make(chan struct{}),
 		Broadcast:    broadcast,
-		WebhookURL:   webhookURL,
 		MinFreeBytes: defaultMinFreeBytes,
 		encoder:      encoder.NewManager(ffmpegPath),
 		active:       make(map[int]*activeJob),

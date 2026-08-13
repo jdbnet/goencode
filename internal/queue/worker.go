@@ -156,9 +156,7 @@ func (m *Manager) processNextJob() {
 		db.AddJobReport(job, "failed", 0, 0, 0)
 		db.DeleteJob(job.ID)
 		m.NotifySSE("job_failed", map[string]interface{}{"id": job.ID, "error": err.Error()})
-		if m.WebhookURL != "" {
-			notify.SendWebhook(m.WebhookURL, "Encoding Job Failed", fmt.Sprintf("File: %s\nError: %s", job.FilePath, err.Error()))
-		}
+		m.notifyJob(notify.KindFailed, job, job.OriginalSize, 0, 0, 0, err.Error())
 	} else {
 		log.Printf("Job %d succeeded", job.ID)
 		db.DeleteJob(job.ID)
@@ -218,7 +216,11 @@ func (m *Manager) runEncoder(ctx context.Context, job *db.Job) error {
 			if skip, reason := encoder.CheckVideoSkip(job.FilePath, job.TargetResolution, job.VideoCodec); skip {
 				log.Printf("Skipping video %d - %s", job.ID, reason)
 				job.ErrorMessage = reason
-				return db.AddJobReport(*job, "skipped", originalSize, 0, 0)
+				err := db.AddJobReport(*job, "skipped", originalSize, 0, 0)
+				if err == nil {
+					m.notifyJob(notify.KindSkip, *job, originalSize, 0, 0, 0, reason)
+				}
+				return err
 			}
 		}
 
@@ -258,7 +260,11 @@ func (m *Manager) runEncoder(ctx context.Context, job *db.Job) error {
 			if skip, reason := encoder.CheckAudioSkip(job.FilePath); skip {
 				log.Printf("Skipping audio %d - %s", job.ID, reason)
 				job.ErrorMessage = reason
-				return db.AddJobReport(*job, "skipped", originalSize, 0, 0)
+				err := db.AddJobReport(*job, "skipped", originalSize, 0, 0)
+				if err == nil {
+					m.notifyJob(notify.KindSkip, *job, originalSize, 0, 0, 0, reason)
+				}
+				return err
 			}
 		}
 
@@ -385,7 +391,12 @@ func (m *Manager) runEncoder(ctx context.Context, job *db.Job) error {
 		os.Remove(tempOutPath)
 		job.ErrorMessage = fmt.Sprintf("Encoded file larger than original (%s vs %s)", formatBytes(encodedSize), formatBytes(originalSize))
 		log.Printf("Keeping original for job %d: %s", job.ID, job.ErrorMessage)
-		return db.AddJobReport(*job, "skipped", encodedSize, 0, time.Since(startTime).Seconds())
+		processTime := time.Since(startTime).Seconds()
+		err := db.AddJobReport(*job, "skipped", encodedSize, 0, processTime)
+		if err == nil {
+			m.notifyJob(notify.KindSkip, *job, originalSize, encodedSize, 0, processTime, job.ErrorMessage)
+		}
+		return err
 	}
 
 	if err := os.MkdirAll(outDir, 0755); err != nil {
@@ -417,7 +428,27 @@ func (m *Manager) runEncoder(ctx context.Context, job *db.Job) error {
 	}
 
 	processTime := time.Since(startTime).Seconds()
-	return db.AddJobReport(*job, "success", encodedSize, sizeSaved, processTime)
+	err = db.AddJobReport(*job, "success", encodedSize, sizeSaved, processTime)
+	if err == nil {
+		m.notifyJob(notify.KindSuccess, *job, originalSize, encodedSize, sizeSaved, processTime, "")
+	}
+	return err
+}
+
+func (m *Manager) notifyJob(kind string, job db.Job, originalSize, encodedSize, sizeSaved int64, processTime float64, detail string) {
+	if m.Notifier == nil {
+		return
+	}
+	m.Notifier.Notify(notify.Event{
+		Kind:           kind,
+		FilePath:       job.FilePath,
+		MediaType:      job.MediaType,
+		OriginalSize:   originalSize,
+		EncodedSize:    encodedSize,
+		SizeSaved:      sizeSaved,
+		ProcessingTime: processTime,
+		Detail:         detail,
+	})
 }
 
 func formatBytes(n int64) string {

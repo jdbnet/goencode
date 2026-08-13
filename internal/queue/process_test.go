@@ -74,11 +74,11 @@ func TestClampWorkers(t *testing.T) {
 }
 
 func TestNewManagerClampsWorkers(t *testing.T) {
-	m := NewManager("ffmpeg", "/tmp", "", 0, nil, nil)
+	m := NewManager("ffmpeg", "/tmp", 0, nil, nil)
 	if m.Workers != 1 {
 		t.Fatalf("Workers = %d, want 1", m.Workers)
 	}
-	m = NewManager("ffmpeg", "/tmp", "", 8, nil, nil)
+	m = NewManager("ffmpeg", "/tmp", 8, nil, nil)
 	if m.Workers != 8 {
 		t.Fatalf("Workers = %d, want 8", m.Workers)
 	}
