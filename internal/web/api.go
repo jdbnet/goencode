@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"goencode/internal/db"
+	"goencode/internal/encoder"
 )
 
 func (s *Server) handleGetQueue(w http.ResponseWriter, r *http.Request) {
@@ -412,4 +413,50 @@ func (s *Server) handleQueueWindow(w http.ResponseWriter, r *http.Request) {
 	}
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(s.qm.ScheduleState())
+}
+
+func (s *Server) handleFFmpegPreview(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	var f db.WatchFolder
+	if err := json.NewDecoder(r.Body).Decode(&f); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	f.EncodeSettings.ApplyDefaults()
+
+	ext := f.OutputExt(f.MediaType)
+	input := "input" + ext
+	output := "output" + ext
+	if f.MediaType == "audio" {
+		input = "input.flac"
+	}
+
+	opt := encoder.VideoEncodeOptions{
+		TargetResolution: f.TargetResolution,
+		VideoCodec:       f.VideoCodec,
+		AudioCodec:       f.AudioCodec,
+		CRF:              f.CRF,
+		Preset:           f.Preset,
+		Tune:             f.Tune,
+		Profile:          f.Profile,
+		Container:        f.Container,
+		CustomFlags:      f.CustomFFmpegFlags,
+		KeepExtraStreams: f.KeepExtraStreams,
+	}
+	note := ""
+	if f.MediaType != "audio" && f.TargetResolution != "" {
+		opt.OriginalWidth = 3840
+		opt.OriginalHeight = 2160
+		note = "Scale filter assumes a 3840x2160 source. Actual encodes use the file's resolution."
+	}
+
+	cmd := encoder.NewManager(s.qm.FFmpegPath).PreviewCommand(f.MediaType, input, output, opt)
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]string{
+		"command": cmd,
+		"note":    note,
+	})
 }

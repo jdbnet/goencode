@@ -355,6 +355,32 @@ tbody tr.folder-disabled {
 	margin: 0;
 }
 
+.ffmpeg-cmd {
+	margin: 0;
+	padding: 0.75rem;
+	background: var(--bg);
+	border: 1px solid var(--border);
+	border-radius: 4px;
+	font-size: 0.75rem;
+	line-height: 1.45;
+	white-space: pre-wrap;
+	word-break: break-word;
+	color: var(--text-primary);
+	max-height: 12rem;
+	overflow: auto;
+}
+
+.ffmpeg-cmd-history {
+	margin-top: 0.4rem;
+	max-height: 8rem;
+}
+
+.form-hint {
+	margin: 0.35rem 0 0;
+	font-size: 0.75rem;
+	color: var(--text-secondary);
+}
+
 .encode-summary {
 	color: var(--text-secondary);
 	font-size: 0.8125rem;

@@ -94,6 +94,11 @@
                 <input type="text" id="custom_ffmpeg_flags" class="form-control" placeholder="-metadata title=Movie">
             </div>
             <div class="form-group">
+                <label>FFmpeg command</label>
+                <pre id="ffmpeg-preview" class="ffmpeg-cmd"></pre>
+                <p id="ffmpeg-preview-note" class="form-hint" style="display: none;"></p>
+            </div>
+            <div class="form-group">
                 <label>Output Directory (Optional)</label>
                 <input type="text" id="output_dir" class="form-control" placeholder="Leave empty to replace in place">
             </div>
@@ -230,6 +235,7 @@
         document.getElementById('folder-cancel').style.display = 'none';
         updateCodecOptions('', '', '');
         updateFormVisibility();
+        schedulePreview();
     }
 
     function editFolder(id) {
@@ -254,6 +260,7 @@
         document.getElementById('folder-submit').textContent = 'Save Changes';
         document.getElementById('folder-cancel').style.display = 'block';
         document.getElementById('folder_path').focus();
+        schedulePreview();
     }
 
     function encodeSummary(f) {
@@ -416,15 +423,52 @@
         }
     }
 
+    let previewTimer;
+    function schedulePreview() {
+        clearTimeout(previewTimer);
+        previewTimer = setTimeout(updateFFmpegPreview, 150);
+    }
+
+    async function updateFFmpegPreview() {
+        const pre = document.getElementById('ffmpeg-preview');
+        const noteEl = document.getElementById('ffmpeg-preview-note');
+        try {
+            const res = await fetch('/api/ffmpeg/preview', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(collectPayload())
+            });
+            if (!res.ok) {
+                pre.textContent = 'Could not build preview: ' + await res.text();
+                noteEl.style.display = 'none';
+                return;
+            }
+            const data = await res.json();
+            pre.textContent = data.command || '';
+            if (data.note) {
+                noteEl.textContent = data.note;
+                noteEl.style.display = 'block';
+            } else {
+                noteEl.style.display = 'none';
+            }
+        } catch (e) {
+            pre.textContent = 'Could not build preview: ' + e.message;
+            noteEl.style.display = 'none';
+        }
+    }
+
     document.getElementById('media_type').addEventListener('change', updateFormVisibility);
     document.getElementById('video_codec').addEventListener('change', function () {
         updateCodecOptions('', '', '');
         updateFormVisibility();
     });
     document.getElementById('output_dir').addEventListener('input', updateFormVisibility);
+    document.getElementById('folder-form').addEventListener('input', schedulePreview);
+    document.getElementById('folder-form').addEventListener('change', schedulePreview);
 
     updateCodecOptions('', '', '');
     updateFormVisibility();
+    updateFFmpegPreview();
     loadFolders();
 </script>
 {{end}}

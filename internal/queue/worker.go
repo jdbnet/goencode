@@ -133,7 +133,7 @@ func (m *Manager) processNextJob() {
 	job.UpdatedAt = time.Now()
 	m.NotifySSE("job_started", job)
 
-	err = m.runEncoder(ctx, job)
+	err = m.runEncoder(ctx, &job)
 	if ctx.Err() != nil || errors.Is(err, context.Canceled) {
 		m.cleanupTemps(job.ID)
 		if m.isShuttingDown() {
@@ -151,6 +151,7 @@ func (m *Manager) processNextJob() {
 	}
 	if err != nil {
 		log.Printf("Job %d failed: %v", job.ID, err)
+		job.ErrorMessage = err.Error()
 		db.UpdateJobStatus(job.ID, "failed", err.Error())
 		db.AddJobReport(job, "failed", 0, 0, 0)
 		db.DeleteJob(job.ID)
@@ -165,7 +166,7 @@ func (m *Manager) processNextJob() {
 	}
 }
 
-func (m *Manager) runEncoder(ctx context.Context, job db.Job) error {
+func (m *Manager) runEncoder(ctx context.Context, job *db.Job) error {
 	startTime := time.Now()
 	defer m.cleanupTemps(job.ID)
 
@@ -217,7 +218,7 @@ func (m *Manager) runEncoder(ctx context.Context, job db.Job) error {
 			if skip, reason := encoder.CheckVideoSkip(job.FilePath, job.TargetResolution, job.VideoCodec); skip {
 				log.Printf("Skipping video %d - %s", job.ID, reason)
 				job.ErrorMessage = reason
-				return db.AddJobReport(job, "skipped", originalSize, 0, 0)
+				return db.AddJobReport(*job, "skipped", originalSize, 0, 0)
 			}
 		}
 
@@ -257,7 +258,7 @@ func (m *Manager) runEncoder(ctx context.Context, job db.Job) error {
 			if skip, reason := encoder.CheckAudioSkip(job.FilePath); skip {
 				log.Printf("Skipping audio %d - %s", job.ID, reason)
 				job.ErrorMessage = reason
-				return db.AddJobReport(job, "skipped", originalSize, 0, 0)
+				return db.AddJobReport(*job, "skipped", originalSize, 0, 0)
 			}
 		}
 
@@ -275,6 +276,9 @@ func (m *Manager) runEncoder(ctx context.Context, job db.Job) error {
 			return cmdErr
 		}
 	}
+
+	job.FFmpegCommand = encoder.FormatCommand(execCmd)
+	log.Printf("Job %d ffmpeg: %s", job.ID, job.FFmpegCommand)
 
 	if err := ctx.Err(); err != nil {
 		return err
@@ -381,7 +385,7 @@ func (m *Manager) runEncoder(ctx context.Context, job db.Job) error {
 		os.Remove(tempOutPath)
 		job.ErrorMessage = fmt.Sprintf("Encoded file larger than original (%s vs %s)", formatBytes(encodedSize), formatBytes(originalSize))
 		log.Printf("Keeping original for job %d: %s", job.ID, job.ErrorMessage)
-		return db.AddJobReport(job, "skipped", encodedSize, 0, time.Since(startTime).Seconds())
+		return db.AddJobReport(*job, "skipped", encodedSize, 0, time.Since(startTime).Seconds())
 	}
 
 	if err := os.MkdirAll(outDir, 0755); err != nil {
@@ -413,7 +417,7 @@ func (m *Manager) runEncoder(ctx context.Context, job db.Job) error {
 	}
 
 	processTime := time.Since(startTime).Seconds()
-	return db.AddJobReport(job, "success", encodedSize, sizeSaved, processTime)
+	return db.AddJobReport(*job, "success", encodedSize, sizeSaved, processTime)
 }
 
 func formatBytes(n int64) string {

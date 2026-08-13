@@ -8,16 +8,15 @@ import (
 )
 
 func (m *FFmpegManager) BuildAudioCmd(inputPath, outputPath, ffmpegFlags string) (*exec.Cmd, error) {
+	return exec.Command(m.BinaryPath, buildAudioArgs(inputPath, outputPath, ffmpegFlags)...), nil
+}
+
+func buildAudioArgs(inputPath, outputPath, ffmpegFlags string) []string {
 	args := []string{"-i", inputPath, "-c:a", "libmp3lame", "-b:a", "320k"}
-
 	if ffmpegFlags != "" {
-		userArgs := ShlexSplit(ffmpegFlags)
-		args = append(args, userArgs...)
+		args = append(args, ShlexSplit(ffmpegFlags)...)
 	}
-
-	args = append(args, outputPath, "-y")
-
-	return exec.Command(m.BinaryPath, args...), nil
+	return append(args, outputPath, "-y")
 }
 
 func CheckAudioSkip(inputPath string) (bool, string) {

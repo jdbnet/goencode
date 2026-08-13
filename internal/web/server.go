@@ -146,6 +146,7 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("/api/folders/clear-history/", s.handleClearFolderHistory)
 	s.mux.HandleFunc("/api/folders/enabled/", s.handleSetWatchFolderEnabled)
 	s.mux.HandleFunc("/api/folders/delete/", s.handleDeleteWatchFolder)
+	s.mux.HandleFunc("/api/ffmpeg/preview", s.handleFFmpegPreview)
 	s.mux.HandleFunc("/api/logs", s.handleGetLogs)
 	s.mux.HandleFunc("/api/reports", s.handleGetReports)
 

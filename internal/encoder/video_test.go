@@ -141,3 +141,55 @@ func TestExtractHEVCMP4Tag(t *testing.T) {
 		t.Errorf("expected hvc1 tag, got %s", joined)
 	}
 }
+
+func TestFormatArgsQuotesSpaces(t *testing.T) {
+	got := FormatArgs([]string{"ffmpeg", "-i", "/media/My Movie.mkv", "-metadata", "title=Hi", "out.mkv", "-y"})
+	if !strings.Contains(got, `"/media/My Movie.mkv"`) {
+		t.Errorf("expected quoted path, got %s", got)
+	}
+	if strings.Contains(got, `"ffmpeg"`) {
+		t.Errorf("plain tokens should not be quoted, got %s", got)
+	}
+}
+
+func TestPreviewCommandIncludesCustomFlags(t *testing.T) {
+	m := NewManager("/usr/bin/ffmpeg")
+	cmd := m.PreviewCommand("video", "input.mkv", "output.mkv", VideoEncodeOptions{
+		KeepExtraStreams: true,
+		CustomFlags:      `-metadata title="My Movie"`,
+	})
+	if !strings.Contains(cmd, "-c:v libx265") {
+		t.Errorf("expected default codec, got %s", cmd)
+	}
+	if !strings.Contains(cmd, "title=My Movie") {
+		t.Errorf("expected custom metadata, got %s", cmd)
+	}
+	if !strings.HasPrefix(cmd, "/usr/bin/ffmpeg ") {
+		t.Errorf("expected binary path prefix, got %s", cmd)
+	}
+}
+
+func TestPreviewCommandAudio(t *testing.T) {
+	m := NewManager("ffmpeg")
+	cmd := m.PreviewCommand("audio", "input.flac", "output.mp3", VideoEncodeOptions{
+		CustomFlags: "-q:a 2",
+	})
+	if !strings.Contains(cmd, "-c:a libmp3lame") {
+		t.Errorf("expected mp3 encoder, got %s", cmd)
+	}
+	if !strings.Contains(cmd, "-q:a 2") {
+		t.Errorf("expected custom flag, got %s", cmd)
+	}
+}
+
+func TestPreviewCommandScaleAssumesSource(t *testing.T) {
+	m := NewManager("ffmpeg")
+	cmd := m.PreviewCommand("video", "input.mkv", "output.mkv", VideoEncodeOptions{
+		TargetResolution: "1080p",
+		OriginalWidth:    3840,
+		OriginalHeight:   2160,
+	})
+	if !strings.Contains(cmd, "scale=1920:1080") {
+		t.Errorf("expected 4k-to-1080 scale, got %s", cmd)
+	}
+}

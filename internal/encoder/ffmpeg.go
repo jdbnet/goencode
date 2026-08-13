@@ -131,3 +131,50 @@ func ShlexSplit(s string) []string {
 	}
 	return args
 }
+
+func FormatCommand(cmd *exec.Cmd) string {
+	if cmd == nil {
+		return ""
+	}
+	if len(cmd.Args) > 0 {
+		return FormatArgs(cmd.Args)
+	}
+	if cmd.Path != "" {
+		return quoteArg(cmd.Path)
+	}
+	return ""
+}
+
+func FormatArgs(args []string) string {
+	quoted := make([]string, len(args))
+	for i, a := range args {
+		quoted[i] = quoteArg(a)
+	}
+	return strings.Join(quoted, " ")
+}
+
+func quoteArg(s string) string {
+	if s == "" {
+		return `""`
+	}
+	for _, r := range s {
+		switch r {
+		case ' ', '\t', '"', '\'', '\\', '$', '`', '|', '&', ';', '<', '>', '(', ')', '{', '}', '*', '?', '[', ']', '#', '~':
+			return `"` + strings.ReplaceAll(s, `"`, `\"`) + `"`
+		}
+	}
+	return s
+}
+
+func (m *FFmpegManager) PreviewCommand(mediaType, inputPath, outputPath string, opt VideoEncodeOptions) string {
+	if m == nil {
+		return ""
+	}
+	var cmd *exec.Cmd
+	if mediaType == "audio" {
+		cmd, _ = m.BuildAudioCmd(inputPath, outputPath, opt.CustomFlags)
+	} else {
+		cmd, _ = m.BuildVideoCmd(inputPath, outputPath, opt)
+	}
+	return FormatCommand(cmd)
+}

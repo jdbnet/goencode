@@ -76,9 +76,10 @@ type Job struct {
 	FFmpegFlags      string `json:"ffmpeg_flags"`
 	ErrorMessage     string `json:"error_message"`
 	EncodeSettings
-	Force     bool      `json:"force"`
-	CreatedAt time.Time `json:"created_at"`
-	UpdatedAt time.Time `json:"updated_at"`
+	Force         bool      `json:"force"`
+	FFmpegCommand string    `json:"ffmpeg_command,omitempty"`
+	CreatedAt     time.Time `json:"created_at"`
+	UpdatedAt     time.Time `json:"updated_at"`
 }
 
 type JobReport struct {
@@ -93,6 +94,7 @@ type JobReport struct {
 	TargetResolution string  `json:"target_resolution"`
 	FFmpegFlags      string  `json:"ffmpeg_flags"`
 	ErrorMessage     string  `json:"error_message"`
+	FFmpegCommand    string  `json:"ffmpeg_command,omitempty"`
 	EncodeSettings
 	CreatedAt time.Time `json:"created_at"`
 }

@@ -49,6 +49,9 @@
                         {{if .ErrorMessage}}
                         <div style="color: {{if eq .Status "failed"}}var(--error){{else}}var(--text-secondary){{end}}; font-size: 0.75rem; margin-top: 0.25rem;">{{.ErrorMessage}}</div>
                         {{end}}
+                        {{if and (eq .Status "failed") .FFmpegCommand}}
+                        <pre class="ffmpeg-cmd ffmpeg-cmd-history">{{.FFmpegCommand}}</pre>
+                        {{end}}
                     </td>
                     <td><span class="badge" style="background: var(--surface-hover); color: var(--text-primary); border-color: var(--border);">{{.MediaType}}</span></td>
                     <td><span class="badge {{.Status}}">{{.Status}}</span></td>

@@ -109,6 +109,7 @@ func runMigrations() error {
 			delete_source BOOLEAN NOT NULL DEFAULT FALSE,
 			keep_original_if_larger BOOLEAN NOT NULL DEFAULT FALSE,
 			keep_extra_streams BOOLEAN NOT NULL DEFAULT TRUE,
+			ffmpeg_command TEXT,
 			created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 		)`,
 		`CREATE TABLE IF NOT EXISTS app_config (
@@ -130,6 +131,9 @@ func runMigrations() error {
 		return err
 	}
 	if err := ensureColumn("jobs", "force", "BOOLEAN NOT NULL DEFAULT FALSE"); err != nil {
+		return err
+	}
+	if err := ensureColumn("job_reports", "ffmpeg_command", "TEXT"); err != nil {
 		return err
 	}
 	if err := ensureFilePathIndexes(); err != nil {
