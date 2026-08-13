@@ -52,6 +52,7 @@ func main() {
 	}
 
 	qm := queue.NewManager(cfg.Encoder.FFmpegPath, cfg.Encoder.TempDir, cfg.Notifications.WebhookURL, cfg.Encoder.Workers, loc, sseServer.Broadcast)
+	qm.MinFreeBytes = int64(cfg.Encoder.MinFreeGB) * 1024 * 1024 * 1024
 	qm.Start()
 	defer qm.Stop()
 

@@ -226,6 +226,10 @@ func (m *Manager) runEncoder(ctx context.Context, job db.Job) error {
 			return fmt.Errorf("failed to probe resolution: %w", err)
 		}
 
+		if err := m.guardEncodeSpace(originalSize, outDir); err != nil {
+			return err
+		}
+
 		log.Printf("Copying %s to %s before encoding...", job.FilePath, tempInPath)
 		if err := copyFile(ctx, job.FilePath, tempInPath); err != nil {
 			return fmt.Errorf("failed to copy source to temp: %w", err)
@@ -255,6 +259,10 @@ func (m *Manager) runEncoder(ctx context.Context, job db.Job) error {
 				job.ErrorMessage = reason
 				return db.AddJobReport(job, "skipped", originalSize, 0, 0)
 			}
+		}
+
+		if err := m.guardEncodeSpace(originalSize, outDir); err != nil {
+			return err
 		}
 
 		log.Printf("Copying %s to %s before encoding...", job.FilePath, tempInPath)
@@ -381,6 +389,13 @@ func (m *Manager) runEncoder(ctx context.Context, job db.Job) error {
 	}
 
 	log.Printf("Copying encoded file back to %s...", finalOutPath)
+	moveNeed := m.minFree()
+	if !sameFilesystem(tempOutPath, outDir) {
+		moveNeed = outputSpaceNeeded(encodedSize, m.minFree())
+	}
+	if err := ensureDiskSpace(outDir, moveNeed, "output"); err != nil {
+		return err
+	}
 	if err := os.Rename(tempOutPath, finalOutPath); err != nil {
 		if err := copyFile(ctx, tempOutPath, finalOutPath); err != nil {
 			return fmt.Errorf("failed to move output: %w", err)

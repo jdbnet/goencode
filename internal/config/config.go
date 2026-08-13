@@ -69,6 +69,7 @@ type EncoderConfig struct {
 	FFmpegPath string `yaml:"ffmpeg_path"`
 	TempDir    string `yaml:"temp_dir"`
 	Workers    int    `yaml:"workers"`
+	MinFreeGB  int    `yaml:"min_free_gb"`
 }
 
 type LoggingConfig struct {
@@ -117,6 +118,7 @@ func LoadConfig(path string) (*Config, error) {
 	cfg.Encoder.FFmpegPath = getEnvStr("GOENCODE_FFMPEG_PATH", cfg.Encoder.FFmpegPath)
 	cfg.Encoder.TempDir = getEnvStr("GOENCODE_ENCODER_TEMP", cfg.Encoder.TempDir)
 	cfg.Encoder.Workers = getEnvInt("GOENCODE_ENCODER_WORKERS", cfg.Encoder.Workers)
+	cfg.Encoder.MinFreeGB = getEnvInt("GOENCODE_ENCODER_MIN_FREE_GB", cfg.Encoder.MinFreeGB)
 	cfg.Logging.Level = getEnvStr("GOENCODE_LOG_LEVEL", cfg.Logging.Level)
 	cfg.Notifications.WebhookURL = getEnvStr("GOENCODE_WEBHOOK_URL", cfg.Notifications.WebhookURL)
 
@@ -134,6 +136,9 @@ func LoadConfig(path string) (*Config, error) {
 		cfg.Encoder.TempDir = "/tmp/goencode"
 	}
 	cfg.Encoder.Workers = clampWorkers(cfg.Encoder.Workers)
+	if cfg.Encoder.MinFreeGB <= 0 {
+		cfg.Encoder.MinFreeGB = 5
+	}
 
 	if envTZ := os.Getenv("TZ"); envTZ != "" {
 		cfg.Server.TimeZone = envTZ

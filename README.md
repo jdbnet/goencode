@@ -46,6 +46,7 @@ services:
       - GOENCODE_PORT=8080
       - GOENCODE_ENCODER_TEMP=/tmp/goencode
       - GOENCODE_ENCODER_WORKERS=1
+      - GOENCODE_ENCODER_MIN_FREE_GB=5
       - TZ=Europe/London
       # Web UI Authentication (Optional)
       - GOENCODE_AUTH_USER=admin
@@ -104,4 +105,5 @@ GoEncode can be configured via `goencode.yaml` or entirely via environment varia
 | `GOENCODE_WEBHOOK_URL` | Webhook URL for job failure notifications | |
 | `GOENCODE_ENCODER_TEMP` | Temp directory for processing jobs | `/tmp/goencode` |
 | `GOENCODE_ENCODER_WORKERS` | Concurrent encode jobs (1-16) | `1` |
+| `GOENCODE_ENCODER_MIN_FREE_GB` | Abort encode if temp or output filesystem would drop below this many GB (also refuses copies larger than free space) | `5` |
 | `GOENCODE_NO_UPDATE` | Set to `1` or `true` to disable binary auto-update on startup | |

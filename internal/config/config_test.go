@@ -69,4 +69,7 @@ func TestEncoderWorkersDefault(t *testing.T) {
 	if cfg.Encoder.Workers != 1 {
 		t.Fatalf("Workers = %d, want 1", cfg.Encoder.Workers)
 	}
+	if cfg.Encoder.MinFreeGB != 5 {
+		t.Fatalf("MinFreeGB = %d, want 5", cfg.Encoder.MinFreeGB)
+	}
 }

@@ -24,14 +24,15 @@ type activeJob struct {
 }
 
 type Manager struct {
-	FFmpegPath  string
-	TempDir     string
-	Workers     int
-	TriggerChan chan struct{}
-	StopChan    chan struct{}
-	Broadcast   func(string, interface{})
-	WebhookURL  string
-	encoder     *encoder.FFmpegManager
+	FFmpegPath   string
+	TempDir      string
+	Workers      int
+	TriggerChan  chan struct{}
+	StopChan     chan struct{}
+	Broadcast    func(string, interface{})
+	WebhookURL   string
+	MinFreeBytes int64
+	encoder      *encoder.FFmpegManager
 
 	mu           sync.Mutex
 	active       map[int]*activeJob
@@ -59,17 +60,18 @@ func NewManager(ffmpegPath, tempDir, webhookURL string, workers int, loc *time.L
 		loc = time.Local
 	}
 	return &Manager{
-		FFmpegPath:  ffmpegPath,
-		TempDir:     tempDir,
-		Workers:     clampWorkers(workers),
-		TriggerChan: make(chan struct{}, 1),
-		StopChan:    make(chan struct{}),
-		Broadcast:   broadcast,
-		WebhookURL:  webhookURL,
-		encoder:     encoder.NewManager(ffmpegPath),
-		active:      make(map[int]*activeJob),
-		doneChan:    make(chan struct{}),
-		loc:         loc,
+		FFmpegPath:   ffmpegPath,
+		TempDir:      tempDir,
+		Workers:      clampWorkers(workers),
+		TriggerChan:  make(chan struct{}, 1),
+		StopChan:     make(chan struct{}),
+		Broadcast:    broadcast,
+		WebhookURL:   webhookURL,
+		MinFreeBytes: defaultMinFreeBytes,
+		encoder:      encoder.NewManager(ffmpegPath),
+		active:       make(map[int]*activeJob),
+		doneChan:     make(chan struct{}),
+		loc:          loc,
 	}
 }
 
@@ -79,7 +81,7 @@ func (m *Manager) Start() {
 	}
 
 	m.loadSchedule()
-	log.Printf("Queue started with %d encode worker(s)", m.Workers)
+	log.Printf("Queue started with %d encode worker(s), min free %s", m.Workers, formatBytes(m.minFree()))
 	if st := m.ScheduleState(); !st.Allowed {
 		log.Printf("Queue idle: %s", st.Reason)
 	}
@@ -223,6 +225,16 @@ func (m *Manager) cmdStillCurrent(cmd *exec.Cmd) bool {
 		}
 	}
 	return false
+}
+
+func (m *Manager) minFree() int64 {
+	if m.MinFreeBytes < 0 {
+		return 0
+	}
+	if m.MinFreeBytes == 0 {
+		return defaultMinFreeBytes
+	}
+	return m.MinFreeBytes
 }
 
 func (m *Manager) isShuttingDown() bool {
