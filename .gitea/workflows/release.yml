@@ -65,10 +65,12 @@ jobs:
           AWS_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
           AWS_DEFAULT_REGION: auto
           R2_ENDPOINT: ${{ secrets.R2_ENDPOINT_URL }}
+          AWS_REQUEST_CHECKSUM_CALCULATION: when_required
+          AWS_RESPONSE_CHECKSUM_VALIDATION: when_required
         run: |
           VERSION="${{ steps.semantic.outputs.version }}"
           printf '%s\n' "$VERSION" > goencode.version
           sha256sum goencode | awk '{print $1}' > goencode.sha256
           aws s3 cp goencode s3://apps/goencode --endpoint-url "$R2_ENDPOINT"
-          aws s3 cp goencode.version s3://apps/goencode.version --endpoint-url "$R2_ENDPOINT"
-          aws s3 cp goencode.sha256 s3://apps/goencode.sha256 --endpoint-url "$R2_ENDPOINT"
+          aws s3 cp goencode.version s3://apps/goencode.version --endpoint-url "$R2_ENDPOINT" --content-type text/plain
+          aws s3 cp goencode.sha256 s3://apps/goencode.sha256 --endpoint-url "$R2_ENDPOINT" --content-type text/plain
