@@ -31,7 +31,7 @@ func (s *Server) handleGetQueue(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
-	
+
 	totalPages := (total + limit - 1) / limit
 	if totalPages == 0 {
 		totalPages = 1
@@ -106,12 +106,64 @@ func (s *Server) handleAddWatchFolder(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	f.FolderPath = strings.TrimSpace(f.FolderPath)
+	f.OutputDir = strings.TrimSpace(f.OutputDir)
 	f.Enabled = true
 	if err := db.AddWatchFolder(f); err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
 	s.wm.Reload()
+	w.WriteHeader(http.StatusOK)
+}
+
+func (s *Server) handleUpdateWatchFolder(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	id, err := strconv.Atoi(strings.TrimPrefix(r.URL.Path, "/api/folders/update/"))
+	if err != nil {
+		http.Error(w, "Invalid ID", http.StatusBadRequest)
+		return
+	}
+	existing, err := db.GetWatchFolderByID(id)
+	if err != nil {
+		http.Error(w, "Folder not found", http.StatusNotFound)
+		return
+	}
+	var f db.WatchFolder
+	if err := json.NewDecoder(r.Body).Decode(&f); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	f.ID = id
+	f.FolderPath = strings.TrimSpace(f.FolderPath)
+	f.OutputDir = strings.TrimSpace(f.OutputDir)
+	if f.FolderPath == "" {
+		http.Error(w, "folder_path is required", http.StatusBadRequest)
+		return
+	}
+
+	pathChanged := f.FolderPath != existing.FolderPath
+	if pathChanged {
+		s.wm.DropPendingForFolder(existing.FolderPath)
+	}
+	if err := db.UpdateWatchFolder(f); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	s.wm.Reload()
+	if pathChanged {
+		n, err := db.DeleteJobsUnderPath(existing.FolderPath)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		if n > 0 {
+			log.Printf("Removed %d queued jobs after watch folder path change %s -> %s", n, existing.FolderPath, f.FolderPath)
+		}
+		s.qm.NotifySSE("queue_updated", nil)
+	}
 	w.WriteHeader(http.StatusOK)
 }
 
@@ -235,27 +287,35 @@ func (s *Server) handleRequeueJob(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Invalid ID", http.StatusBadRequest)
 		return
 	}
-	
+
 	report, err := db.GetJobReportByID(id)
 	if err != nil {
 		http.Error(w, "Job report not found", http.StatusNotFound)
 		return
 	}
-	
+
 	if report.Status != "failed" {
 		http.Error(w, "Can only requeue failed jobs", http.StatusBadRequest)
 		return
 	}
-	
-	err = db.AddJob(report.FilePath, report.MediaType, 5, report.TargetResolution, report.FFmpegFlags, report.OriginalSize)
+
+	err = db.AddJob(db.Job{
+		FilePath:         report.FilePath,
+		MediaType:        report.MediaType,
+		Priority:         5,
+		OriginalSize:     report.OriginalSize,
+		TargetResolution: report.TargetResolution,
+		FFmpegFlags:      report.FFmpegFlags,
+		EncodeSettings:   report.EncodeSettings,
+	})
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
-	
+
 	// Delete the failed report so it doesn't show up in history as failed anymore
 	_ = db.DeleteJobReport(id)
-	
+
 	s.qm.NotifySSE("queue_updated", nil)
 	s.qm.NotifySSE("job_added", nil)
 	s.qm.Trigger()

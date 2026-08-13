@@ -7,23 +7,22 @@
                 <thead>
                     <tr>
                         <th>Path</th>
-                        <th>Type</th>
-                        <th>Resolution</th>
-                        <th>Flags</th>
+                        <th>Encode</th>
+                        <th>Output</th>
                         <th>Enabled</th>
                         <th>Actions</th>
                     </tr>
                 </thead>
                 <tbody id="folders-body">
-                    <!-- Populated by JS -->
                 </tbody>
             </table>
         </div>
     </div>
 
-    <div class="card" style="flex: 1; min-width: 300px;">
-        <h2>Add Watch Folder</h2>
-        <form id="add-folder-form" onsubmit="addFolder(event)">
+    <div class="card" style="flex: 1; min-width: 320px;">
+        <h2 id="folder-form-title">Add Watch Folder</h2>
+        <form id="folder-form" onsubmit="saveFolder(event)">
+            <input type="hidden" id="folder_id" value="">
             <div class="form-group">
                 <label>Folder Path</label>
                 <input type="text" id="folder_path" class="form-control" placeholder="/media/movies" required>
@@ -35,8 +34,17 @@
                     <option value="audio">Audio</option>
                 </select>
             </div>
-            <div class="form-group">
-                <label>Target Resolution (Video only)</label>
+            <div class="form-group video-only" id="video_codec_group">
+                <label>Video Codec</label>
+                <select id="video_codec" class="form-control">
+                    <option value="libx265">H.265 / HEVC</option>
+                    <option value="libx264">H.264 / AVC</option>
+                    <option value="libsvtav1">AV1 (SVT-AV1)</option>
+                    <option value="copy">Copy (remux only)</option>
+                </select>
+            </div>
+            <div class="form-group video-only" id="target_resolution_group">
+                <label>Target Resolution</label>
                 <select id="target_resolution" class="form-control">
                     <option value="">Original</option>
                     <option value="1080p">1080p</option>
@@ -44,50 +52,234 @@
                     <option value="480p">480p</option>
                 </select>
             </div>
-            <div class="form-group" id="video_crf_group">
-                <label>CRF (Video only, 0-51)</label>
-                <input type="number" id="crf" class="form-control" placeholder="22" min="0" max="51">
+            <div class="form-group video-only" id="video_crf_group">
+                <label>CRF</label>
+                <input type="number" id="crf" class="form-control" placeholder="Default" min="0" max="63">
             </div>
-            <div class="form-group" id="video_preset_group">
-                <label>Preset (Video only)</label>
-                <select id="preset" class="form-control">
-                    <option value="">Default (medium)</option>
-                    <option value="ultrafast">ultrafast</option>
-                    <option value="superfast">superfast</option>
-                    <option value="veryfast">veryfast</option>
-                    <option value="faster">faster</option>
-                    <option value="fast">fast</option>
-                    <option value="medium">medium</option>
-                    <option value="slow">slow</option>
-                    <option value="slower">slower</option>
-                    <option value="veryslow">veryslow</option>
+            <div class="form-group video-only" id="video_preset_group">
+                <label>Preset</label>
+                <select id="preset" class="form-control"></select>
+            </div>
+            <div class="form-group video-only" id="video_tune_group">
+                <label>Tune</label>
+                <select id="tune" class="form-control"></select>
+            </div>
+            <div class="form-group video-only" id="video_profile_group">
+                <label>Profile</label>
+                <select id="profile" class="form-control"></select>
+            </div>
+            <div class="form-group video-only" id="audio_codec_group">
+                <label>Audio Codec</label>
+                <select id="audio_codec" class="form-control">
+                    <option value="copy">Copy</option>
+                    <option value="aac">AAC (192 kbps)</option>
+                    <option value="ac3">AC3 (384 kbps)</option>
+                </select>
+            </div>
+            <div class="form-group video-only" id="container_group">
+                <label>Container</label>
+                <select id="container" class="form-control">
+                    <option value="mkv">MKV</option>
+                    <option value="mp4">MP4</option>
                 </select>
             </div>
             <div class="form-group">
                 <label>Custom FFmpeg Flags (Optional)</label>
-                <input type="text" id="custom_ffmpeg_flags" class="form-control" placeholder="-vcodec copy">
+                <input type="text" id="custom_ffmpeg_flags" class="form-control" placeholder="-map 0">
             </div>
-            <button type="submit" class="btn" style="width: 100%;">Add Folder</button>
+            <div class="form-group">
+                <label>Output Directory (Optional)</label>
+                <input type="text" id="output_dir" class="form-control" placeholder="Leave empty to replace in place">
+            </div>
+            <div class="form-group" id="delete_source_group" style="display: none;">
+                <label class="form-check">
+                    <input type="checkbox" id="delete_source">
+                    <span>Delete source file after encode</span>
+                </label>
+            </div>
+            <div class="form-group">
+                <label class="form-check">
+                    <input type="checkbox" id="keep_original_if_larger">
+                    <span>Keep original if encoded is larger</span>
+                </label>
+            </div>
+            <button type="submit" class="btn" id="folder-submit" style="width: 100%;">Add Folder</button>
+            <button type="button" class="btn btn-outline" id="folder-cancel" style="width: 100%; margin-top: 0.5rem; display: none;" onclick="resetForm()">Cancel</button>
         </form>
     </div>
 </div>
 
 <script>
-    const foldersBody = document.getElementById('folders-body');
+    const PRESETS_X26X = ['ultrafast', 'superfast', 'veryfast', 'faster', 'fast', 'medium', 'slow', 'slower', 'veryslow'];
+    const PRESETS_AV1 = Array.from({ length: 14 }, (_, i) => String(i));
+    const TUNES_X264 = ['film', 'animation', 'grain', 'stillimage', 'fastdecode', 'zerolatency'];
+    const TUNES_X265 = ['animation', 'grain', 'fastdecode', 'zerolatency'];
+    const PROFILES_X264 = ['baseline', 'main', 'high', 'high10'];
+    const PROFILES_X265 = ['main', 'main10', 'main12'];
+    const CODEC_LABELS = { libx265: 'HEVC', libx264: 'H.264', libsvtav1: 'AV1', copy: 'Copy' };
 
-    async function loadFolders() {
-        const res = await fetch('/api/folders');
-        const folders = await res.json();
-        renderFolders(folders || []);
+    const foldersBody = document.getElementById('folders-body');
+    let foldersById = {};
+
+    function fillSelect(el, options, placeholder, selected) {
+        el.innerHTML = '';
+        const empty = document.createElement('option');
+        empty.value = '';
+        empty.textContent = placeholder;
+        el.appendChild(empty);
+        options.forEach(v => {
+            const opt = document.createElement('option');
+            opt.value = v;
+            opt.textContent = v;
+            el.appendChild(opt);
+        });
+        el.value = options.includes(selected) ? selected : '';
+    }
+
+    function updateCodecOptions(selectedPreset, selectedTune, selectedProfile) {
+        const codec = document.getElementById('video_codec').value;
+        const presetEl = document.getElementById('preset');
+        const tuneEl = document.getElementById('tune');
+        const profileEl = document.getElementById('profile');
+        const crfEl = document.getElementById('crf');
+
+        if (codec === 'libsvtav1') {
+            fillSelect(presetEl, PRESETS_AV1, 'Default (8)', selectedPreset);
+            fillSelect(tuneEl, [], 'N/A', '');
+            fillSelect(profileEl, [], 'N/A', '');
+            crfEl.placeholder = 'Default (35)';
+        } else if (codec === 'libx264') {
+            fillSelect(presetEl, PRESETS_X26X, 'Default (medium)', selectedPreset);
+            fillSelect(tuneEl, TUNES_X264, 'None', selectedTune);
+            fillSelect(profileEl, PROFILES_X264, 'None', selectedProfile);
+            crfEl.placeholder = 'Default (22)';
+        } else if (codec === 'libx265') {
+            fillSelect(presetEl, PRESETS_X26X, 'Default (medium)', selectedPreset);
+            fillSelect(tuneEl, TUNES_X265, 'None', selectedTune);
+            fillSelect(profileEl, PROFILES_X265, 'None', selectedProfile);
+            crfEl.placeholder = 'Default (22)';
+        } else {
+            fillSelect(presetEl, [], 'N/A', '');
+            fillSelect(tuneEl, [], 'N/A', '');
+            fillSelect(profileEl, [], 'N/A', '');
+        }
+    }
+
+    function updateFormVisibility() {
+        const isVideo = document.getElementById('media_type').value === 'video';
+        const codec = document.getElementById('video_codec').value;
+        const isCopy = codec === 'copy';
+        const hideEncode = !isVideo || isCopy;
+
+        document.querySelectorAll('.video-only').forEach(el => {
+            el.style.display = isVideo ? 'block' : 'none';
+        });
+        document.getElementById('target_resolution_group').style.display = (isVideo && !isCopy) ? 'block' : 'none';
+        document.getElementById('video_crf_group').style.display = hideEncode ? 'none' : 'block';
+        document.getElementById('video_preset_group').style.display = hideEncode ? 'none' : 'block';
+        document.getElementById('video_tune_group').style.display = hideEncode || codec === 'libsvtav1' ? 'none' : 'block';
+        document.getElementById('video_profile_group').style.display = hideEncode || codec === 'libsvtav1' ? 'none' : 'block';
+
+        const hasOut = document.getElementById('output_dir').value.trim() !== '';
+        document.getElementById('delete_source_group').style.display = hasOut ? 'block' : 'none';
+        if (!hasOut) {
+            document.getElementById('delete_source').checked = false;
+        }
+    }
+
+    function collectPayload() {
+        const isVideo = document.getElementById('media_type').value === 'video';
+        const payload = {
+            folder_path: document.getElementById('folder_path').value.trim(),
+            media_type: document.getElementById('media_type').value,
+            target_resolution: isVideo ? document.getElementById('target_resolution').value : '',
+            custom_ffmpeg_flags: document.getElementById('custom_ffmpeg_flags').value.trim(),
+            video_codec: isVideo ? document.getElementById('video_codec').value : 'libx265',
+            audio_codec: isVideo ? document.getElementById('audio_codec').value : 'copy',
+            crf: isVideo ? document.getElementById('crf').value : '',
+            preset: isVideo ? document.getElementById('preset').value : '',
+            tune: isVideo ? document.getElementById('tune').value : '',
+            profile: isVideo ? document.getElementById('profile').value : '',
+            container: isVideo ? document.getElementById('container').value : 'mkv',
+            output_dir: document.getElementById('output_dir').value.trim(),
+            delete_source: document.getElementById('delete_source').checked,
+            keep_original_if_larger: document.getElementById('keep_original_if_larger').checked,
+        };
+        if (payload.video_codec === 'copy') {
+            payload.target_resolution = '';
+            payload.crf = '';
+            payload.preset = '';
+            payload.tune = '';
+            payload.profile = '';
+        }
+        return payload;
+    }
+
+    function resetForm() {
+        document.getElementById('folder_id').value = '';
+        document.getElementById('folder-form').reset();
+        document.getElementById('folder-form-title').textContent = 'Add Watch Folder';
+        document.getElementById('folder-submit').textContent = 'Add Folder';
+        document.getElementById('folder-cancel').style.display = 'none';
+        updateCodecOptions('', '', '');
+        updateFormVisibility();
+    }
+
+    function editFolder(id) {
+        const f = foldersById[id];
+        if (!f) return;
+        document.getElementById('folder_id').value = f.id;
+        document.getElementById('folder_path').value = f.folder_path || '';
+        document.getElementById('media_type').value = f.media_type || 'video';
+        document.getElementById('video_codec').value = f.video_codec || 'libx265';
+        document.getElementById('target_resolution').value = f.target_resolution || '';
+        document.getElementById('crf').value = f.crf || '';
+        document.getElementById('audio_codec').value = f.audio_codec || 'copy';
+        document.getElementById('container').value = f.container || 'mkv';
+        document.getElementById('custom_ffmpeg_flags').value = f.custom_ffmpeg_flags || '';
+        document.getElementById('output_dir').value = f.output_dir || '';
+        document.getElementById('delete_source').checked = !!f.delete_source;
+        document.getElementById('keep_original_if_larger').checked = !!f.keep_original_if_larger;
+        updateCodecOptions(f.preset || '', f.tune || '', f.profile || '');
+        updateFormVisibility();
+        document.getElementById('folder-form-title').textContent = 'Edit Watch Folder';
+        document.getElementById('folder-submit').textContent = 'Save Changes';
+        document.getElementById('folder-cancel').style.display = 'block';
+        document.getElementById('folder_path').focus();
+    }
+
+    function encodeSummary(f) {
+        if (f.media_type === 'audio') {
+            const parts = ['Audio', 'MP3'];
+            if (f.keep_original_if_larger) parts.push('keep if larger');
+            return parts.join(' · ');
+        }
+        const parts = [CODEC_LABELS[f.video_codec] || f.video_codec || 'HEVC'];
+        if (f.video_codec !== 'copy' && f.target_resolution) parts.push(f.target_resolution);
+        if (f.video_codec !== 'copy' && f.preset) parts.push(f.preset);
+        if (f.audio_codec && f.audio_codec !== 'copy') parts.push(f.audio_codec.toUpperCase());
+        parts.push((f.container || 'mkv').toUpperCase());
+        return parts.join(' · ');
+    }
+
+    function outputSummary(f) {
+        if (f.output_dir) {
+            let s = f.output_dir;
+            if (f.delete_source) s += ' · delete source';
+            if (f.keep_original_if_larger) s += ' · keep if larger';
+            return s;
+        }
+        let s = 'Replace';
+        if (f.keep_original_if_larger) s += ' · keep if larger';
+        return s;
     }
 
     function renderFolders(folders) {
         foldersBody.innerHTML = folders.map(f => `
             <tr class="${f.enabled ? '' : 'folder-disabled'}">
                 <td style="word-break: break-all;">${f.folder_path}</td>
-                <td><span class="badge" style="background: var(--surface-hover); color: var(--text-primary); border-color: var(--border);">${f.media_type}</span></td>
-                <td>${f.target_resolution || '-'}</td>
-                <td><code style="background: var(--bg); padding: 0.2rem; border-radius: 4px;">${f.custom_ffmpeg_flags || '-'}</code></td>
+                <td class="encode-summary">${encodeSummary(f)}</td>
+                <td class="encode-summary">${outputSummary(f)}</td>
                 <td>
                     <label class="switch" title="${f.enabled ? 'Disable' : 'Enable'} watch folder">
                         <input type="checkbox" ${f.enabled ? 'checked' : ''} onchange="setFolderEnabled(${f.id}, this)">
@@ -95,46 +287,39 @@
                     </label>
                 </td>
                 <td>
-                    <button class="btn btn-sm btn-outline" ${f.enabled ? '' : 'disabled'} onclick="scanFolder(${f.id}, this)">Scan Now</button>
-                    <button class="btn btn-sm btn-danger" onclick="deleteFolder(${f.id})">Delete</button>
+                    <div class="folder-actions">
+                        <button class="btn btn-sm btn-outline" onclick="editFolder(${f.id})">Edit</button>
+                        <button class="btn btn-sm btn-outline" ${f.enabled ? '' : 'disabled'} onclick="scanFolder(${f.id}, this)">Scan Now</button>
+                        <button class="btn btn-sm btn-danger" onclick="deleteFolder(${f.id})">Delete</button>
+                    </div>
                 </td>
             </tr>
         `).join('');
     }
 
-    async function addFolder(e) {
+    async function loadFolders() {
+        const res = await fetch('/api/folders');
+        const folders = await res.json();
+        foldersById = {};
+        (folders || []).forEach(f => { foldersById[f.id] = f; });
+        renderFolders(folders || []);
+    }
+
+    async function saveFolder(e) {
         e.preventDefault();
-
-        let flags = document.getElementById('custom_ffmpeg_flags').value;
-        const crf = document.getElementById('crf').value;
-        const preset = document.getElementById('preset').value;
-        const mediaType = document.getElementById('media_type').value;
-
-        if (mediaType === 'video') {
-            if (crf) {
-                flags += (flags ? ' ' : '') + '-crf ' + crf;
-            }
-            if (preset) {
-                flags += (flags ? ' ' : '') + '-preset ' + preset;
-            }
-        }
-
-        const payload = {
-            folder_path: document.getElementById('folder_path').value,
-            media_type: mediaType,
-            target_resolution: document.getElementById('target_resolution').value,
-            custom_ffmpeg_flags: flags,
-        };
-        const res = await fetch('/api/folders/add', {
+        const id = document.getElementById('folder_id').value;
+        const payload = collectPayload();
+        const url = id ? '/api/folders/update/' + id : '/api/folders/add';
+        const res = await fetch(url, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(payload)
         });
         if (res.ok) {
-            document.getElementById('add-folder-form').reset();
+            resetForm();
             loadFolders();
         } else {
-            alert('Failed to add folder');
+            alert('Failed to save folder: ' + await res.text());
         }
     }
 
@@ -194,19 +379,24 @@
         if (!confirm('Delete watch folder?')) return;
         const res = await fetch('/api/folders/delete/' + id, { method: 'DELETE' });
         if (res.ok) {
+            if (document.getElementById('folder_id').value === String(id)) {
+                resetForm();
+            }
             loadFolders();
         } else {
             alert('Failed to delete folder');
         }
     }
 
-    loadFolders();
-
-    document.getElementById('media_type').addEventListener('change', function (e) {
-        const isVideo = e.target.value === 'video';
-        document.getElementById('target_resolution').parentElement.style.display = isVideo ? 'block' : 'none';
-        document.getElementById('video_crf_group').style.display = isVideo ? 'block' : 'none';
-        document.getElementById('video_preset_group').style.display = isVideo ? 'block' : 'none';
+    document.getElementById('media_type').addEventListener('change', updateFormVisibility);
+    document.getElementById('video_codec').addEventListener('change', function () {
+        updateCodecOptions('', '', '');
+        updateFormVisibility();
     });
+    document.getElementById('output_dir').addEventListener('input', updateFormVisibility);
+
+    updateCodecOptions('', '', '');
+    updateFormVisibility();
+    loadFolders();
 </script>
 {{end}}

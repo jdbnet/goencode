@@ -79,17 +79,17 @@ func ParseProgress(line string, durationSec float64) float64 {
 	if spaceIdx != -1 {
 		timeStr = timeStr[:spaceIdx]
 	}
-	
+
 	// timeStr is HH:MM:SS.ms
 	parts := strings.Split(timeStr, ":")
 	if len(parts) != 3 {
 		return -1
 	}
-	
+
 	h, _ := strconv.ParseFloat(parts[0], 64)
 	m, _ := strconv.ParseFloat(parts[1], 64)
 	s, _ := strconv.ParseFloat(parts[2], 64)
-	
+
 	currentSec := h*3600 + m*60 + s
 	if durationSec > 0 {
 		return (currentSec / durationSec) * 100.0
@@ -97,7 +97,7 @@ func ParseProgress(line string, durationSec float64) float64 {
 	return -1
 }
 
-// ShlexSplit splits a command string like a shell would. 
+// ShlexSplit splits a command string like a shell would.
 // A simple implementation since go doesn't have shlex.split built-in.
 func ShlexSplit(s string) []string {
 	var args []string

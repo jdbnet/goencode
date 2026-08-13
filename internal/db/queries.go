@@ -6,49 +6,77 @@ import (
 	"strings"
 )
 
-// Watch Folders
+const folderSelectCols = `id, folder_path, media_type, target_resolution, custom_ffmpeg_flags, enabled, video_codec, audio_codec, crf, preset, tune, profile, container, output_dir, delete_source, keep_original_if_larger, created_at, updated_at`
 
-func GetWatchFolders() ([]WatchFolder, error) {
-	rows, err := DB.Query(`SELECT id, folder_path, media_type, target_resolution, custom_ffmpeg_flags, enabled, created_at, updated_at FROM watch_folders`)
-	if err != nil {
-		return nil, err
+const jobSelectCols = `id, file_path, media_type, status, priority, original_size, target_resolution, ffmpeg_flags, error_message, video_codec, audio_codec, crf, preset, tune, profile, container, output_dir, delete_source, keep_original_if_larger, created_at, updated_at`
+
+const reportSelectCols = `id, file_path, media_type, status, original_size, encoded_size, size_saved, processing_time, target_resolution, ffmpeg_flags, error_message, video_codec, audio_codec, crf, preset, tune, profile, container, output_dir, delete_source, keep_original_if_larger, created_at`
+
+func nullStr(s string) sql.NullString {
+	if s == "" {
+		return sql.NullString{Valid: false}
 	}
-	defer rows.Close()
+	return sql.NullString{String: s, Valid: true}
+}
 
-	var folders []WatchFolder
-	for rows.Next() {
-		var f WatchFolder
-		var targetRes, ffmpegFlags sql.NullString
-		if err := rows.Scan(&f.ID, &f.FolderPath, &f.MediaType, &targetRes, &ffmpegFlags, &f.Enabled, &f.CreatedAt, &f.UpdatedAt); err != nil {
-			return nil, err
-		}
-		if targetRes.Valid {
-			f.TargetResolution = targetRes.String
-		}
-		if ffmpegFlags.Valid {
-			f.CustomFFmpegFlags = ffmpegFlags.String
-		}
-		folders = append(folders, f)
+func applyEncodeNulls(es *EncodeSettings, videoCodec, audioCodec, crf, preset, tune, profile, container, outputDir sql.NullString, deleteSource, keepIfLarger bool) {
+	es.VideoCodec = "libx265"
+	if videoCodec.Valid && videoCodec.String != "" {
+		es.VideoCodec = videoCodec.String
 	}
-	return folders, nil
+	es.AudioCodec = "copy"
+	if audioCodec.Valid && audioCodec.String != "" {
+		es.AudioCodec = audioCodec.String
+	}
+	if crf.Valid {
+		es.CRF = crf.String
+	}
+	if preset.Valid {
+		es.Preset = preset.String
+	}
+	if tune.Valid {
+		es.Tune = tune.String
+	}
+	if profile.Valid {
+		es.Profile = profile.String
+	}
+	es.Container = "mkv"
+	if container.Valid && container.String != "" {
+		es.Container = container.String
+	}
+	if outputDir.Valid {
+		es.OutputDir = outputDir.String
+	}
+	es.DeleteSource = deleteSource
+	es.KeepOriginalIfLarger = keepIfLarger
 }
 
-func AddWatchFolder(f WatchFolder) error {
-	_, err := DB.Exec(`INSERT INTO watch_folders (folder_path, media_type, target_resolution, custom_ffmpeg_flags, enabled) VALUES (?, ?, ?, ?, ?)`,
-		f.FolderPath, f.MediaType, nullStr(f.TargetResolution), nullStr(f.CustomFFmpegFlags), f.Enabled)
-	return err
+func encodeInsertArgs(es EncodeSettings) []interface{} {
+	es.ApplyDefaults()
+	return []interface{}{
+		es.VideoCodec,
+		es.AudioCodec,
+		nullStr(es.CRF),
+		nullStr(es.Preset),
+		nullStr(es.Tune),
+		nullStr(es.Profile),
+		es.Container,
+		nullStr(es.OutputDir),
+		es.DeleteSource,
+		es.KeepOriginalIfLarger,
+	}
 }
 
-func DeleteWatchFolder(id int) error {
-	_, err := DB.Exec(`DELETE FROM watch_folders WHERE id = ?`, id)
-	return err
-}
-
-func GetWatchFolderByID(id int) (WatchFolder, error) {
+func scanWatchFolder(scan func(dest ...interface{}) error) (WatchFolder, error) {
 	var f WatchFolder
 	var targetRes, ffmpegFlags sql.NullString
-	err := DB.QueryRow(`SELECT id, folder_path, media_type, target_resolution, custom_ffmpeg_flags, enabled, created_at, updated_at FROM watch_folders WHERE id = ?`, id).
-		Scan(&f.ID, &f.FolderPath, &f.MediaType, &targetRes, &ffmpegFlags, &f.Enabled, &f.CreatedAt, &f.UpdatedAt)
+	var videoCodec, audioCodec, crf, preset, tune, profile, container, outputDir sql.NullString
+	err := scan(
+		&f.ID, &f.FolderPath, &f.MediaType, &targetRes, &ffmpegFlags, &f.Enabled,
+		&videoCodec, &audioCodec, &crf, &preset, &tune, &profile, &container, &outputDir,
+		&f.DeleteSource, &f.KeepOriginalIfLarger,
+		&f.CreatedAt, &f.UpdatedAt,
+	)
 	if err != nil {
 		return f, err
 	}
@@ -58,7 +86,104 @@ func GetWatchFolderByID(id int) (WatchFolder, error) {
 	if ffmpegFlags.Valid {
 		f.CustomFFmpegFlags = ffmpegFlags.String
 	}
+	applyEncodeNulls(&f.EncodeSettings, videoCodec, audioCodec, crf, preset, tune, profile, container, outputDir, f.DeleteSource, f.KeepOriginalIfLarger)
 	return f, nil
+}
+
+func scanJob(scan func(dest ...interface{}) error) (Job, error) {
+	var j Job
+	var targetRes, ffmpegFlags, errMsg sql.NullString
+	var videoCodec, audioCodec, crf, preset, tune, profile, container, outputDir sql.NullString
+	err := scan(
+		&j.ID, &j.FilePath, &j.MediaType, &j.Status, &j.Priority, &j.OriginalSize, &targetRes, &ffmpegFlags, &errMsg,
+		&videoCodec, &audioCodec, &crf, &preset, &tune, &profile, &container, &outputDir,
+		&j.DeleteSource, &j.KeepOriginalIfLarger,
+		&j.CreatedAt, &j.UpdatedAt,
+	)
+	if err != nil {
+		return j, err
+	}
+	if targetRes.Valid {
+		j.TargetResolution = targetRes.String
+	}
+	if ffmpegFlags.Valid {
+		j.FFmpegFlags = ffmpegFlags.String
+	}
+	if errMsg.Valid {
+		j.ErrorMessage = errMsg.String
+	}
+	applyEncodeNulls(&j.EncodeSettings, videoCodec, audioCodec, crf, preset, tune, profile, container, outputDir, j.DeleteSource, j.KeepOriginalIfLarger)
+	return j, nil
+}
+
+func scanJobReport(scan func(dest ...interface{}) error) (JobReport, error) {
+	var r JobReport
+	var targetRes, ffmpegFlags, errMsg sql.NullString
+	var videoCodec, audioCodec, crf, preset, tune, profile, container, outputDir sql.NullString
+	err := scan(
+		&r.ID, &r.FilePath, &r.MediaType, &r.Status, &r.OriginalSize, &r.EncodedSize, &r.SizeSaved, &r.ProcessingTime, &targetRes, &ffmpegFlags, &errMsg,
+		&videoCodec, &audioCodec, &crf, &preset, &tune, &profile, &container, &outputDir,
+		&r.DeleteSource, &r.KeepOriginalIfLarger,
+		&r.CreatedAt,
+	)
+	if err != nil {
+		return r, err
+	}
+	if targetRes.Valid {
+		r.TargetResolution = targetRes.String
+	}
+	if ffmpegFlags.Valid {
+		r.FFmpegFlags = ffmpegFlags.String
+	}
+	if errMsg.Valid {
+		r.ErrorMessage = errMsg.String
+	}
+	applyEncodeNulls(&r.EncodeSettings, videoCodec, audioCodec, crf, preset, tune, profile, container, outputDir, r.DeleteSource, r.KeepOriginalIfLarger)
+	return r, nil
+}
+
+func GetWatchFolders() ([]WatchFolder, error) {
+	rows, err := DB.Query(`SELECT ` + folderSelectCols + ` FROM watch_folders`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var folders []WatchFolder
+	for rows.Next() {
+		f, err := scanWatchFolder(rows.Scan)
+		if err != nil {
+			return nil, err
+		}
+		folders = append(folders, f)
+	}
+	return folders, rows.Err()
+}
+
+func AddWatchFolder(f WatchFolder) error {
+	f.EncodeSettings.ApplyDefaults()
+	args := []interface{}{f.FolderPath, f.MediaType, nullStr(f.TargetResolution), nullStr(f.CustomFFmpegFlags), f.Enabled}
+	args = append(args, encodeInsertArgs(f.EncodeSettings)...)
+	_, err := DB.Exec(`INSERT INTO watch_folders (folder_path, media_type, target_resolution, custom_ffmpeg_flags, enabled, video_codec, audio_codec, crf, preset, tune, profile, container, output_dir, delete_source, keep_original_if_larger) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`, args...)
+	return err
+}
+
+func UpdateWatchFolder(f WatchFolder) error {
+	f.EncodeSettings.ApplyDefaults()
+	args := []interface{}{f.FolderPath, f.MediaType, nullStr(f.TargetResolution), nullStr(f.CustomFFmpegFlags)}
+	args = append(args, encodeInsertArgs(f.EncodeSettings)...)
+	args = append(args, f.ID)
+	_, err := DB.Exec(`UPDATE watch_folders SET folder_path = ?, media_type = ?, target_resolution = ?, custom_ffmpeg_flags = ?, video_codec = ?, audio_codec = ?, crf = ?, preset = ?, tune = ?, profile = ?, container = ?, output_dir = ?, delete_source = ?, keep_original_if_larger = ? WHERE id = ?`, args...)
+	return err
+}
+
+func DeleteWatchFolder(id int) error {
+	_, err := DB.Exec(`DELETE FROM watch_folders WHERE id = ?`, id)
+	return err
+}
+
+func GetWatchFolderByID(id int) (WatchFolder, error) {
+	return scanWatchFolder(DB.QueryRow(`SELECT `+folderSelectCols+` FROM watch_folders WHERE id = ?`, id).Scan)
 }
 
 func SetWatchFolderEnabled(id int, enabled bool) error {
@@ -75,23 +200,16 @@ func DeleteJobsUnderPath(folderPath string) (int64, error) {
 	return res.RowsAffected()
 }
 
-func nullStr(s string) sql.NullString {
-	if s == "" {
-		return sql.NullString{Valid: false}
-	}
-	return sql.NullString{String: s, Valid: true}
-}
-
-// Jobs
-
-func AddJob(filePath, mediaType string, priority int, targetRes, ffmpegFlags string, originalSize int64) error {
-	_, err := DB.Exec(`INSERT INTO jobs (file_path, media_type, priority, target_resolution, ffmpeg_flags, original_size) VALUES (?, ?, ?, ?, ?, ?)`,
-		filePath, mediaType, priority, nullStr(targetRes), nullStr(ffmpegFlags), originalSize)
+func AddJob(j Job) error {
+	j.EncodeSettings.ApplyDefaults()
+	args := []interface{}{j.FilePath, j.MediaType, j.Priority, nullStr(j.TargetResolution), nullStr(j.FFmpegFlags), j.OriginalSize}
+	args = append(args, encodeInsertArgs(j.EncodeSettings)...)
+	_, err := DB.Exec(`INSERT INTO jobs (file_path, media_type, priority, target_resolution, ffmpeg_flags, original_size, video_codec, audio_codec, crf, preset, tune, profile, container, output_dir, delete_source, keep_original_if_larger) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`, args...)
 	return err
 }
 
 func GetPendingJobs() ([]Job, error) {
-	rows, err := DB.Query(`SELECT id, file_path, media_type, status, priority, original_size, target_resolution, ffmpeg_flags, error_message, created_at, updated_at FROM jobs ORDER BY priority DESC, created_at ASC`)
+	rows, err := DB.Query(`SELECT ` + jobSelectCols + ` FROM jobs ORDER BY priority DESC, created_at ASC`)
 	if err != nil {
 		return nil, err
 	}
@@ -99,17 +217,13 @@ func GetPendingJobs() ([]Job, error) {
 
 	var jobs []Job
 	for rows.Next() {
-		var j Job
-		var targetRes, ffmpegFlags, errMsg sql.NullString
-		if err := rows.Scan(&j.ID, &j.FilePath, &j.MediaType, &j.Status, &j.Priority, &j.OriginalSize, &targetRes, &ffmpegFlags, &errMsg, &j.CreatedAt, &j.UpdatedAt); err != nil {
+		j, err := scanJob(rows.Scan)
+		if err != nil {
 			return nil, err
 		}
-		if targetRes.Valid { j.TargetResolution = targetRes.String }
-		if ffmpegFlags.Valid { j.FFmpegFlags = ffmpegFlags.String }
-		if errMsg.Valid { j.ErrorMessage = errMsg.String }
 		jobs = append(jobs, j)
 	}
-	return jobs, nil
+	return jobs, rows.Err()
 }
 
 func GetJobsPaginated(limit, offset int) ([]Job, int, error) {
@@ -118,7 +232,7 @@ func GetJobsPaginated(limit, offset int) ([]Job, int, error) {
 		return nil, 0, err
 	}
 
-	rows, err := DB.Query(`SELECT id, file_path, media_type, status, priority, original_size, target_resolution, ffmpeg_flags, error_message, created_at, updated_at FROM jobs ORDER BY priority DESC, created_at ASC LIMIT ? OFFSET ?`, limit, offset)
+	rows, err := DB.Query(`SELECT `+jobSelectCols+` FROM jobs ORDER BY priority DESC, created_at ASC LIMIT ? OFFSET ?`, limit, offset)
 	if err != nil {
 		return nil, 0, err
 	}
@@ -126,17 +240,13 @@ func GetJobsPaginated(limit, offset int) ([]Job, int, error) {
 
 	var jobs []Job
 	for rows.Next() {
-		var j Job
-		var targetRes, ffmpegFlags, errMsg sql.NullString
-		if err := rows.Scan(&j.ID, &j.FilePath, &j.MediaType, &j.Status, &j.Priority, &j.OriginalSize, &targetRes, &ffmpegFlags, &errMsg, &j.CreatedAt, &j.UpdatedAt); err != nil {
+		j, err := scanJob(rows.Scan)
+		if err != nil {
 			return nil, 0, err
 		}
-		if targetRes.Valid { j.TargetResolution = targetRes.String }
-		if ffmpegFlags.Valid { j.FFmpegFlags = ffmpegFlags.String }
-		if errMsg.Valid { j.ErrorMessage = errMsg.String }
 		jobs = append(jobs, j)
 	}
-	return jobs, total, nil
+	return jobs, total, rows.Err()
 }
 
 func UpdateJobStatus(id int, status, errMsg string) error {
@@ -168,7 +278,7 @@ func IsFileAlreadyProcessedOrQueued(filePath string) (bool, error) {
 	if count > 0 {
 		return true, nil
 	}
-	
+
 	err = DB.QueryRow(`SELECT COUNT(*) FROM job_reports WHERE file_path = ?`, filePath).Scan(&count)
 	if err != nil {
 		return false, err
@@ -176,11 +286,11 @@ func IsFileAlreadyProcessedOrQueued(filePath string) (bool, error) {
 	return count > 0, nil
 }
 
-// Job Reports
-
 func AddJobReport(j Job, status string, encodedSize int64, sizeSaved int64, processingTime float64) error {
-	_, err := DB.Exec(`INSERT INTO job_reports (file_path, media_type, status, original_size, encoded_size, size_saved, processing_time, target_resolution, ffmpeg_flags, error_message) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-		j.FilePath, j.MediaType, status, j.OriginalSize, encodedSize, sizeSaved, processingTime, nullStr(j.TargetResolution), nullStr(j.FFmpegFlags), nullStr(j.ErrorMessage))
+	j.EncodeSettings.ApplyDefaults()
+	args := []interface{}{j.FilePath, j.MediaType, status, j.OriginalSize, encodedSize, sizeSaved, processingTime, nullStr(j.TargetResolution), nullStr(j.FFmpegFlags), nullStr(j.ErrorMessage)}
+	args = append(args, encodeInsertArgs(j.EncodeSettings)...)
+	_, err := DB.Exec(`INSERT INTO job_reports (file_path, media_type, status, original_size, encoded_size, size_saved, processing_time, target_resolution, ffmpeg_flags, error_message, video_codec, audio_codec, crf, preset, tune, profile, container, output_dir, delete_source, keep_original_if_larger) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`, args...)
 	return err
 }
 
@@ -188,8 +298,8 @@ func GetJobReports(limit, offset int, statusFilter string, folderFilter string) 
 	var total int
 	queryArgs := []interface{}{}
 	countQuery := `SELECT COUNT(*) FROM job_reports`
-	selectQuery := `SELECT id, file_path, media_type, status, original_size, encoded_size, size_saved, processing_time, target_resolution, ffmpeg_flags, error_message, created_at FROM job_reports`
-	
+	selectQuery := `SELECT ` + reportSelectCols + ` FROM job_reports`
+
 	whereClauses := []string{}
 
 	if statusFilter != "" && statusFilter != "all" {
@@ -200,7 +310,7 @@ func GetJobReports(limit, offset int, statusFilter string, folderFilter string) 
 			queryArgs = append(queryArgs, statusFilter)
 		}
 	}
-	
+
 	if folderFilter != "" && folderFilter != "all" {
 		whereClauses = append(whereClauses, `(file_path LIKE ? OR file_path = ?)`)
 		queryArgs = append(queryArgs, folderFilter+"/%", folderFilter)
@@ -226,31 +336,17 @@ func GetJobReports(limit, offset int, statusFilter string, folderFilter string) 
 
 	var reports []JobReport
 	for rows.Next() {
-		var r JobReport
-		var targetRes, ffmpegFlags, errMsg sql.NullString
-		if err := rows.Scan(&r.ID, &r.FilePath, &r.MediaType, &r.Status, &r.OriginalSize, &r.EncodedSize, &r.SizeSaved, &r.ProcessingTime, &targetRes, &ffmpegFlags, &errMsg, &r.CreatedAt); err != nil {
+		r, err := scanJobReport(rows.Scan)
+		if err != nil {
 			return nil, 0, err
 		}
-		if targetRes.Valid { r.TargetResolution = targetRes.String }
-		if ffmpegFlags.Valid { r.FFmpegFlags = ffmpegFlags.String }
-		if errMsg.Valid { r.ErrorMessage = errMsg.String }
 		reports = append(reports, r)
 	}
-	return reports, total, nil
+	return reports, total, rows.Err()
 }
 
 func GetJobReportByID(id int) (JobReport, error) {
-	var r JobReport
-	var targetRes, ffmpegFlags, errMsg sql.NullString
-	err := DB.QueryRow(`SELECT id, file_path, media_type, status, original_size, encoded_size, size_saved, processing_time, target_resolution, ffmpeg_flags, error_message, created_at FROM job_reports WHERE id = ?`, id).
-		Scan(&r.ID, &r.FilePath, &r.MediaType, &r.Status, &r.OriginalSize, &r.EncodedSize, &r.SizeSaved, &r.ProcessingTime, &targetRes, &ffmpegFlags, &errMsg, &r.CreatedAt)
-	if err != nil {
-		return r, err
-	}
-	if targetRes.Valid { r.TargetResolution = targetRes.String }
-	if ffmpegFlags.Valid { r.FFmpegFlags = ffmpegFlags.String }
-	if errMsg.Valid { r.ErrorMessage = errMsg.String }
-	return r, nil
+	return scanJobReport(DB.QueryRow(`SELECT `+reportSelectCols+` FROM job_reports WHERE id = ?`, id).Scan)
 }
 
 func DeleteJobReport(id int) error {
@@ -267,7 +363,6 @@ type DashboardStats struct {
 func GetDashboardStats() (DashboardStats, error) {
 	var stats DashboardStats
 
-	// Total saved space and files encoded
 	err := DB.QueryRow(`
 		SELECT 
 			COALESCE(SUM(size_saved), 0) as saved, 
@@ -279,7 +374,6 @@ func GetDashboardStats() (DashboardStats, error) {
 		return stats, err
 	}
 
-	// Queue length
 	err = DB.QueryRow(`SELECT COUNT(*) FROM jobs`).Scan(&stats.QueueLength)
 	if err != nil && err != sql.ErrNoRows {
 		return stats, err

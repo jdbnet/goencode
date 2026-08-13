@@ -437,14 +437,8 @@ func (m *Manager) processFile(filePath string, waitForStable bool) {
 	}
 
 	if skip, reason := checkSkip(filePath, match); skip {
-		job := db.Job{
-			FilePath:         filePath,
-			MediaType:        match.MediaType,
-			TargetResolution: match.TargetResolution,
-			FFmpegFlags:      match.CustomFFmpegFlags,
-			OriginalSize:     info.Size(),
-			ErrorMessage:     reason,
-		}
+		job := match.NewJob(filePath, info.Size(), 0)
+		job.ErrorMessage = reason
 		if err := db.AddJobReport(job, "skipped", info.Size(), 0, 0); err != nil {
 			log.Printf("Failed to record skip for %s: %v", filePath, err)
 			return
@@ -453,7 +447,7 @@ func (m *Manager) processFile(filePath string, waitForStable bool) {
 		return
 	}
 
-	err = db.AddJob(filePath, match.MediaType, 0, match.TargetResolution, match.CustomFFmpegFlags, info.Size())
+	err = db.AddJob(match.NewJob(filePath, info.Size(), 0))
 	if err != nil {
 		log.Printf("Failed to add job for %s: %v", filePath, err)
 		return
@@ -466,7 +460,7 @@ func (m *Manager) processFile(filePath string, waitForStable bool) {
 
 func checkSkip(filePath string, folder db.WatchFolder) (bool, string) {
 	if folder.MediaType == "video" {
-		return encoder.CheckVideoSkip(filePath, folder.TargetResolution)
+		return encoder.CheckVideoSkip(filePath, folder.TargetResolution, folder.VideoCodec)
 	}
 	return encoder.CheckAudioSkip(filePath)
 }

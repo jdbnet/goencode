@@ -81,7 +81,7 @@ func (m *Manager) processNextJob() {
 
 	job := jobs[0]
 	log.Printf("Starting job %d for %s", job.ID, job.FilePath)
-	
+
 	err = db.UpdateJobStatus(job.ID, "processing", "")
 	if err != nil {
 		log.Printf("Failed to update job status: %v", err)
@@ -129,16 +129,15 @@ func (m *Manager) runEncoder(job db.Job) error {
 	}
 
 	ext := filepath.Ext(job.FilePath)
-	var outExt string
-	if job.MediaType == "video" {
-		outExt = ".mkv"
-	} else {
-		outExt = ".mp3"
-	}
-	
+	outExt := job.OutputExt(job.MediaType)
 	baseName := strings.TrimSuffix(filepath.Base(job.FilePath), ext)
 	tempOutPath := filepath.Join(m.TempDir, fmt.Sprintf("temp_%d_%s%s", job.ID, baseName, outExt))
-	finalOutPath := filepath.Join(filepath.Dir(job.FilePath), baseName+outExt)
+
+	outDir := filepath.Dir(job.FilePath)
+	if strings.TrimSpace(job.OutputDir) != "" {
+		outDir = strings.TrimSpace(job.OutputDir)
+	}
+	finalOutPath := filepath.Join(outDir, baseName+outExt)
 
 	duration, _ := m.encoder.ProbeDuration(job.FilePath)
 
@@ -148,12 +147,12 @@ func (m *Manager) runEncoder(job db.Job) error {
 	var execCmd *exec.Cmd
 
 	if job.MediaType == "video" {
-		if skip, reason := encoder.CheckVideoSkip(job.FilePath, job.TargetResolution); skip {
+		if skip, reason := encoder.CheckVideoSkip(job.FilePath, job.TargetResolution, job.VideoCodec); skip {
 			log.Printf("Skipping video %d - %s", job.ID, reason)
 			job.ErrorMessage = reason
 			return db.AddJobReport(job, "skipped", originalSize, 0, 0)
 		}
-		
+
 		w, h, err := m.encoder.ProbeResolution(job.FilePath)
 		if err != nil {
 			return fmt.Errorf("failed to probe resolution: %w", err)
@@ -165,7 +164,19 @@ func (m *Manager) runEncoder(job db.Job) error {
 		}
 		defer os.Remove(tempInPath)
 
-		execCmd, err = m.encoder.BuildVideoCmd(tempInPath, tempOutPath, job.TargetResolution, job.FFmpegFlags, w, h)
+		execCmd, err = m.encoder.BuildVideoCmd(tempInPath, tempOutPath, encoder.VideoEncodeOptions{
+			TargetResolution: job.TargetResolution,
+			VideoCodec:       job.VideoCodec,
+			AudioCodec:       job.AudioCodec,
+			CRF:              job.CRF,
+			Preset:           job.Preset,
+			Tune:             job.Tune,
+			Profile:          job.Profile,
+			Container:        job.Container,
+			CustomFlags:      job.FFmpegFlags,
+			OriginalWidth:    w,
+			OriginalHeight:   h,
+		})
 		if err != nil {
 			return err
 		}
@@ -175,7 +186,7 @@ func (m *Manager) runEncoder(job db.Job) error {
 			job.ErrorMessage = reason
 			return db.AddJobReport(job, "skipped", originalSize, 0, 0)
 		}
-		
+
 		log.Printf("Copying %s to %s before encoding...", job.FilePath, tempInPath)
 		if err := copyFile(job.FilePath, tempInPath); err != nil {
 			return fmt.Errorf("failed to copy source to temp: %w", err)
@@ -224,7 +235,7 @@ func (m *Manager) runEncoder(job db.Job) error {
 				prog := encoder.ParseProgress(line, duration)
 				if prog >= 0 {
 					m.NotifySSE("progress", map[string]interface{}{
-						"id": job.ID,
+						"id":       job.ID,
 						"progress": fmt.Sprintf("%.1f", prog),
 					})
 				}
@@ -249,13 +260,13 @@ func (m *Manager) runEncoder(job db.Job) error {
 			os.Remove(tempOutPath)
 			return fmt.Errorf("failed to probe output duration: %w", err)
 		}
-		
+
 		// Allow up to 5 seconds of difference (sometimes containers/padding vary slightly)
 		diff := duration - outDuration
 		if diff < 0 {
 			diff = -diff
 		}
-		
+
 		if diff > 5.0 {
 			os.Remove(tempOutPath)
 			return fmt.Errorf("duration mismatch: original is %.2fs, encoded is %.2fs", duration, outDuration)
@@ -270,21 +281,46 @@ func (m *Manager) runEncoder(job db.Job) error {
 	encodedSize := outInfo.Size()
 	sizeSaved := originalSize - encodedSize
 
-	// Move file
+	if job.KeepOriginalIfLarger && encodedSize >= originalSize {
+		os.Remove(tempOutPath)
+		job.ErrorMessage = fmt.Sprintf("Encoded file larger than original (%s vs %s)", formatBytes(encodedSize), formatBytes(originalSize))
+		log.Printf("Keeping original for job %d: %s", job.ID, job.ErrorMessage)
+		return db.AddJobReport(job, "skipped", encodedSize, 0, time.Since(startTime).Seconds())
+	}
+
+	if err := os.MkdirAll(outDir, 0755); err != nil {
+		return fmt.Errorf("failed to create output dir: %w", err)
+	}
+
 	log.Printf("Copying encoded file back to %s...", finalOutPath)
 	if err := os.Rename(tempOutPath, finalOutPath); err != nil {
-		// Fallback to copy if cross-device link error
 		if err := copyFile(tempOutPath, finalOutPath); err != nil {
 			return fmt.Errorf("failed to move output: %w", err)
 		}
 		os.Remove(tempOutPath)
 	}
 
-	// Delete original if different extension
-	if finalOutPath != job.FilePath {
+	outputElsewhere := strings.TrimSpace(job.OutputDir) != ""
+	if outputElsewhere {
+		if job.DeleteSource {
+			os.Remove(job.FilePath)
+		}
+	} else if finalOutPath != job.FilePath {
 		os.Remove(job.FilePath)
 	}
 
 	processTime := time.Since(startTime).Seconds()
 	return db.AddJobReport(job, "success", encodedSize, sizeSaved, processTime)
+}
+
+func formatBytes(n int64) string {
+	const mb = 1024 * 1024
+	if n >= mb {
+		return fmt.Sprintf("%.1f MB", float64(n)/float64(mb))
+	}
+	const kb = 1024
+	if n >= kb {
+		return fmt.Sprintf("%.1f KB", float64(n)/float64(kb))
+	}
+	return fmt.Sprintf("%d B", n)
 }

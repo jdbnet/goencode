@@ -20,13 +20,13 @@ import (
 )
 
 type Server struct {
-	cfg *config.Config
-	qm  *queue.Manager
-	wm  *watcher.Manager
-	sse *SSEServer
-	mux *http.ServeMux
+	cfg          *config.Config
+	qm           *queue.Manager
+	wm           *watcher.Manager
+	sse          *SSEServer
+	mux          *http.ServeMux
 	sessionToken string
-	version string
+	version      string
 }
 
 func NewServer(cfg *config.Config, qm *queue.Manager, wm *watcher.Manager, sse *SSEServer, version string) *Server {
@@ -49,12 +49,12 @@ func NewServer(cfg *config.Config, qm *queue.Manager, wm *watcher.Manager, sse *
 
 func (s *Server) Start() error {
 	addr := fmt.Sprintf("%s:%d", s.cfg.Server.ListenAddr, s.cfg.Server.Port)
-	
+
 	var handler http.Handler = s.mux
 	if s.cfg.Auth.Username != "" {
 		handler = s.authMiddleware(s.mux)
 	}
-	
+
 	return http.ListenAndServe(addr, handler)
 }
 
@@ -62,10 +62,10 @@ func (s *Server) authMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		importStrings := true // to ensure "strings" is imported if not already, wait, I need to check if strings is imported.
 		_ = importStrings
-		
-		// We'll use a simple slice of prefixes to bypass auth, but since there's only one, 
+
+		// We'll use a simple slice of prefixes to bypass auth, but since there's only one,
 		// let's just use string slicing or import "strings"
-		
+
 		// To be safe without adding imports manually if I don't know the exact list:
 		if s.cfg.Auth.Username == "" || r.URL.Path == "/login" || r.URL.Path == "/api/status" || (len(r.URL.Path) >= 8 && r.URL.Path[:8] == "/static/") {
 			next.ServeHTTP(w, r)
@@ -129,15 +129,16 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("/logout", s.handleLogout)
 
 	s.mux.HandleFunc("/api/sse", s.sse.HandleSSE)
-	
+
 	s.mux.HandleFunc("/api/queue", s.handleGetQueue)
 	s.mux.HandleFunc("/api/status", s.handleStatus)
 	s.mux.HandleFunc("/api/jobs/bump/", s.handleBumpJob)
 	s.mux.HandleFunc("/api/jobs/cancel/", s.handleCancelJob)
 	s.mux.HandleFunc("/api/jobs/requeue/", s.handleRequeueJob)
-	
+
 	s.mux.HandleFunc("/api/folders", s.handleGetWatchFolders)
 	s.mux.HandleFunc("/api/folders/add", s.handleAddWatchFolder)
+	s.mux.HandleFunc("/api/folders/update/", s.handleUpdateWatchFolder)
 	s.mux.HandleFunc("/api/folders/scan/", s.handleScanWatchFolder)
 	s.mux.HandleFunc("/api/folders/enabled/", s.handleSetWatchFolderEnabled)
 	s.mux.HandleFunc("/api/folders/delete/", s.handleDeleteWatchFolder)
@@ -218,12 +219,12 @@ func formatDuration(seconds float64) string {
 	if seconds <= 0 {
 		return "0s"
 	}
-	
+
 	totalSecs := int64(seconds)
 	hours := totalSecs / 3600
 	minutes := (totalSecs % 3600) / 60
 	secs := totalSecs % 60
-	
+
 	if hours > 0 {
 		return fmt.Sprintf("%dh %dm %ds", hours, minutes, secs)
 	}
@@ -243,14 +244,14 @@ func (s *Server) handleDashboard(w http.ResponseWriter, r *http.Request) {
 	}
 
 	stats, _ := db.GetDashboardStats()
-	
+
 	// Create formatted stats
 	data := struct {
-		AuthEnabled     bool
-		FilesEncoded    int
-		QueueLength     int
-		SavedSpace      string
-		Version         string
+		AuthEnabled  bool
+		FilesEncoded int
+		QueueLength  int
+		SavedSpace   string
+		Version      string
 	}{
 		AuthEnabled:  s.cfg.Auth.Username != "",
 		FilesEncoded: stats.FilesEncoded,
@@ -308,7 +309,7 @@ func (s *Server) handleHistory(w http.ResponseWriter, r *http.Request) {
 	offset := (page - 1) * limit
 
 	folders, _ := db.GetWatchFolders()
-	
+
 	folderFilterPath := ""
 	folderFilterID := 0
 	if fID, err := strconv.Atoi(folderFilterIDStr); err == nil && fID > 0 {
@@ -326,12 +327,12 @@ func (s *Server) handleHistory(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
-	
+
 	totalPages := (total + limit - 1) / limit
 	if totalPages == 0 {
 		totalPages = 1
 	}
-	
+
 	data := struct {
 		AuthEnabled  bool
 		Reports      []db.JobReport
@@ -363,7 +364,7 @@ func (s *Server) handleHistory(w http.ResponseWriter, r *http.Request) {
 		Limit:        limit,
 		Version:      s.version,
 	}
-	
+
 	tmpl, err := template.New("layout").Funcs(template.FuncMap{
 		"formatBytes":    formatBytes,
 		"formatDuration": formatDuration,
