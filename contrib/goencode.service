@@ -1,0 +1,11 @@
+[Unit]
+Description=GoEncode
+After=network.target
+
+[Service]
+WorkingDirectory=/var/lib/goencode
+ExecStart=/usr/local/bin/goencode
+Restart=on-failure
+
+[Install]
+WantedBy=multi-user.target

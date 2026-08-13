@@ -20,7 +20,7 @@ GoEncode is a lightweight, high-performance media transcoding server written in 
 
 ## Deployment with Docker
 
-The easiest way to run GoEncode is via Docker using the pre-built image.
+The easiest way to run GoEncode is via Docker using the pre-built image. Docker images do not self-update; pull a new image instead.
 
 ### Image Registry
 
@@ -65,7 +65,7 @@ services:
       - db
 
   db:
-    image: mariadb:10.11
+    image: mariadb:latest
     container_name: goencode-db
     restart: unless-stopped
     environment:
@@ -82,15 +82,38 @@ volumes:
 
 ## Deployment with Binary
 
-We also build the binary for Linux AMD64 which you can download from [https://apps.jdbnet.co.uk/goencode](https://apps.jdbnet.co.uk/goencode)
+Linux AMD64. Needs `ffmpeg` (`sudo apt install ffmpeg`, or `dnf` / `pacman -S ffmpeg`).
 
-You'll need to make sure ```ffmpeg``` and ```gzip``` are available on your system.
+```bash
+curl -L -o goencode https://apps.jdbnet.co.uk/goencode
+chmod +x goencode
+./goencode
+```
 
-No database server is required. SQLite is the default and stores data in `goencode.db` in the working directory. Copy the example [goencode.yaml](goencode.yaml) if you want a config file, or pass `--config` / environment variables.
+Open [http://127.0.0.1:8080](http://127.0.0.1:8080). The SQLite database is `goencode.db` in the current directory. To change settings, copy [goencode.yaml](goencode.yaml) next to the binary or pass `--config`.
 
-For MariaDB, set `GOENCODE_DB_DRIVER=mysql` (or `database.driver: mysql`) plus host, user, and password.
+To run at boot:
 
-The binary checks for updates on startup and replaces itself when a newer release is available. Pass `--no-update` or set `GOENCODE_NO_UPDATE=1` to disable this. Docker images do not self-update; pull a new image instead.
+```bash
+sudo install -m 755 goencode /usr/local/bin/goencode
+sudo mkdir -p /var/lib/goencode
+sudo tee /etc/systemd/system/goencode.service >/dev/null <<'EOF'
+[Unit]
+Description=GoEncode
+After=network.target
+
+[Service]
+WorkingDirectory=/var/lib/goencode
+ExecStart=/usr/local/bin/goencode
+Restart=on-failure
+
+[Install]
+WantedBy=multi-user.target
+EOF
+sudo systemctl enable --now goencode
+```
+
+Same unit: [contrib/goencode.service](contrib/goencode.service). Logs: `journalctl -u goencode -f`.
 
 ## Configuration
 
