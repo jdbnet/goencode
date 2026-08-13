@@ -112,10 +112,11 @@
             body: JSON.stringify({ paused: !schedule.paused })
         });
         if (!res.ok) {
-            alert('Failed to update pause: ' + await res.text());
+            toastHttpError(res, 'Failed to update pause');
             return;
         }
         applySchedule(await res.json());
+        toast(schedule.paused ? 'Queue paused' : 'Queue resumed');
     }
 
     async function saveWindow() {
@@ -127,10 +128,11 @@
             body: JSON.stringify({ start, end })
         });
         if (!res.ok) {
-            alert('Failed to save window: ' + await res.text());
+            toastHttpError(res, 'Failed to save window');
             return;
         }
         applySchedule(await res.json());
+        toast('Encode window saved');
     }
 
     async function clearWindow() {
@@ -142,10 +144,11 @@
             body: JSON.stringify({ start: '', end: '' })
         });
         if (!res.ok) {
-            alert('Failed to clear window: ' + await res.text());
+            toastHttpError(res, 'Failed to clear window');
             return;
         }
         applySchedule(await res.json());
+        toast('Encode window cleared');
     }
 
     function formatElapsed(ms) {
@@ -271,13 +274,23 @@
     }
 
     async function bumpJob(id) {
-        await fetch('/api/jobs/bump/' + id, { method: 'POST' });
+        const res = await fetch('/api/jobs/bump/' + id, { method: 'POST' });
+        if (!res.ok) {
+            toastHttpError(res, 'Failed to bump job');
+            return;
+        }
+        toast('Job moved to top of queue');
         loadQueue();
     }
 
     async function cancelJob(id) {
         if (!confirm("Cancel job?")) return;
-        await fetch('/api/jobs/cancel/' + id, { method: 'POST' });
+        const res = await fetch('/api/jobs/cancel/' + id, { method: 'POST' });
+        if (!res.ok) {
+            toastHttpError(res, 'Failed to cancel job');
+            return;
+        }
+        toast('Job cancelled');
         loadQueue();
     }
 

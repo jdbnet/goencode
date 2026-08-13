@@ -158,7 +158,7 @@
         setRangePills();
         const res = await fetch('/api/reports?range=' + encodeURIComponent(currentRange));
         if (!res.ok) {
-            alert('Failed to load reports: ' + await res.text());
+            toastHttpError(res, 'Failed to load reports');
             return;
         }
         const data = await res.json();

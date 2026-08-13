@@ -396,16 +396,21 @@
         const id = document.getElementById('folder_id').value;
         const payload = collectPayload();
         const url = id ? '/api/folders/update/' + id : '/api/folders/add';
-        const res = await fetch(url, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(payload)
-        });
-        if (res.ok) {
-            resetForm();
-            loadFolders();
-        } else {
-            alert('Failed to save folder: ' + await res.text());
+        try {
+            const res = await fetch(url, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(payload)
+            });
+            if (res.ok) {
+                resetForm();
+                loadFolders();
+                toast(id ? 'Watch folder updated' : 'Watch folder added');
+            } else {
+                toastHttpError(res, 'Failed to save folder');
+            }
+        } catch (err) {
+            toast(err.message || 'Failed to save folder', 'error');
         }
     }
 
@@ -424,13 +429,14 @@
             });
             if (res.ok) {
                 loadFolders();
+                toast(enabled ? 'Watch folder enabled' : 'Watch folder disabled');
             } else {
                 checkbox.checked = !enabled;
-                alert('Failed to update folder: ' + await res.text());
+                toastHttpError(res, 'Failed to update folder');
             }
         } catch (e) {
             checkbox.checked = !enabled;
-            alert('Error: ' + e.message);
+            toast(e.message || 'Failed to update folder', 'error');
         } finally {
             checkbox.disabled = false;
         }
@@ -448,18 +454,21 @@
             const res = await fetch(url, { method: 'POST' });
             if (res.ok) {
                 const data = await res.json();
-                btn.textContent = force ? `Queued ${data.files_scanned} files...` : `Scanning ${data.files_scanned} files...`;
-                setTimeout(() => {
-                    btn.disabled = false;
-                    btn.textContent = originalText;
-                }, 3000);
+                const n = data.files_scanned || 0;
+                btn.textContent = originalText;
+                btn.disabled = false;
+                if (force) {
+                    toast('Queued ' + n + ' files for re-encode');
+                } else {
+                    toast('Scan started for ' + n + ' files');
+                }
             } else {
-                alert('Failed to scan folder: ' + await res.text());
+                toastHttpError(res, 'Failed to scan folder');
                 btn.disabled = false;
                 btn.textContent = originalText;
             }
         } catch (e) {
-            alert('Error: ' + e.message);
+            toast(e.message || 'Failed to scan folder', 'error');
             btn.disabled = false;
             btn.textContent = originalText;
         }
@@ -472,9 +481,9 @@
         const res = await fetch('/api/folders/clear-history/' + id, { method: 'POST' });
         if (res.ok) {
             const data = await res.json();
-            alert('Deleted ' + (data.deleted || 0) + ' history records.');
+            toast('Deleted ' + (data.deleted || 0) + ' history records');
         } else {
-            alert('Failed to clear history: ' + await res.text());
+            toastHttpError(res, 'Failed to clear history');
         }
     }
 
@@ -486,8 +495,9 @@
                 resetForm();
             }
             loadFolders();
+            toast('Watch folder deleted');
         } else {
-            alert('Failed to delete folder');
+            toastHttpError(res, 'Failed to delete folder');
         }
     }
 

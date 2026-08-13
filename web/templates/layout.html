@@ -8,7 +8,6 @@
     <link rel="icon" type="image/png" href="/static/icon.png">
     <link rel="stylesheet" href="/static/style.css">
     <script>
-        // Global SSE listener setup early so components can attach to it
         const sse = new EventSource('/api/sse');
         window.sse = sse;
 
@@ -17,6 +16,52 @@
                 window.sse.close();
             }
         });
+
+        window.toast = function (message, type) {
+            const text = String(message || '').trim();
+            if (!text) return;
+            const kind = type === 'error' || type === 'warning' ? type : 'success';
+            let root = document.getElementById('toast-root');
+            if (!root) {
+                if (!document.body) return;
+                root = document.createElement('div');
+                root.id = 'toast-root';
+                root.className = 'toast-root';
+                root.setAttribute('aria-live', 'polite');
+                document.body.appendChild(root);
+            }
+
+            const el = document.createElement('div');
+            el.className = 'toast toast-' + kind;
+            el.setAttribute('role', kind === 'error' ? 'alert' : 'status');
+            const msg = document.createElement('span');
+            msg.className = 'toast-msg';
+            msg.textContent = text;
+            el.appendChild(msg);
+            el.addEventListener('click', () => dismiss());
+            root.appendChild(el);
+            while (root.children.length > 4) {
+                root.removeChild(root.firstChild);
+            }
+            requestAnimationFrame(() => el.classList.add('toast-in'));
+
+            const timer = setTimeout(dismiss, kind === 'error' ? 6000 : 3500);
+            function dismiss() {
+                clearTimeout(timer);
+                if (el.classList.contains('toast-out')) return;
+                el.classList.add('toast-out');
+                setTimeout(() => el.remove(), 200);
+            }
+        };
+
+        window.toastHttpError = async function (res, fallback) {
+            let msg = fallback || 'Request failed';
+            try {
+                const t = (await res.text()).trim();
+                if (t) msg = t;
+            } catch (e) {}
+            toast(msg, 'error');
+        };
     </script>
 </head>
 <body>
@@ -58,6 +103,7 @@
     <div class="container">
         {{template "content" .}}
     </div>
+    <div id="toast-root" class="toast-root" aria-live="polite" aria-relevant="additions"></div>
     
     <script>
         // Set active nav link

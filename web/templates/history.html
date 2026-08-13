@@ -149,12 +149,12 @@ async function requeueJob(id, failed) {
     try {
         const res = await fetch('/api/jobs/requeue/' + id, { method: 'POST' });
         if (res.ok) {
-            window.location.reload();
+            toast(failed ? 'Failed job requeued' : 'File queued for re-encode');
         } else {
-            alert("Failed to requeue job: " + await res.text());
+            toastHttpError(res, 'Failed to requeue job');
         }
     } catch (e) {
-        alert("Error: " + e.message);
+        toast(e.message || 'Failed to requeue job', 'error');
     }
 }
 </script>
