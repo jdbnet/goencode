@@ -24,6 +24,8 @@ const (
 	periodicScanEvery = time.Minute
 	dirScanDebounce   = 2 * time.Second
 	eventBuffer       = 4096
+	scanConcurrency   = 3
+	eventWorkers      = 3
 )
 
 var ignoredExts = map[string]struct{}{
@@ -42,6 +44,7 @@ type Manager struct {
 	scanMu       sync.Mutex
 	processChan  chan string
 	stopChan     chan struct{}
+	scanActive   sync.Mutex
 }
 
 func NewManager(qm *queue.Manager) (*Manager, error) {
@@ -59,7 +62,7 @@ func NewManager(qm *queue.Manager) (*Manager, error) {
 		stopChan:     make(chan struct{}),
 	}
 
-	for i := 0; i < 3; i++ {
+	for i := 0; i < eventWorkers; i++ {
 		go m.processWorker()
 	}
 
@@ -249,31 +252,69 @@ func (m *Manager) ScanFolder(id int, force bool) (int, error) {
 		return 0, err
 	}
 
+	if !m.scanActive.TryLock() {
+		return 0, fmt.Errorf("a scan is already running")
+	}
+
 	count := 0
+	var queued []string
 	err = filepath.WalkDir(folder.FolderPath, func(path string, d os.DirEntry, err error) error {
 		if err != nil {
 			log.Printf("Error accessing path %s during scan: %v", path, err)
 			return nil
 		}
-		if !d.IsDir() {
-			count++
-			if alreadyKnown(path, known) {
-				return nil
-			}
-			go m.processFileImmediate(path, force)
+		if d.IsDir() {
+			return nil
 		}
+		count++
+		if shouldIgnoreFile(path) || alreadyKnown(path, known) {
+			return nil
+		}
+		queued = append(queued, path)
 		return nil
 	})
 	if err != nil {
+		m.scanActive.Unlock()
 		return count, err
 	}
 
+	folderVal := *folder
+	go m.processQueuedScan(queued, folderVal, force)
+
 	if force {
-		log.Printf("Force re-encode started for %s (%d files)", folder.FolderPath, count)
+		log.Printf("Force re-encode started for %s (%d files, %d to queue)", folder.FolderPath, count, len(queued))
 	} else {
-		log.Printf("Manual scan started for %s (%d files)", folder.FolderPath, count)
+		log.Printf("Manual scan started for %s (%d files, %d to check)", folder.FolderPath, count, len(queued))
 	}
 	return count, nil
+}
+
+func (m *Manager) processQueuedScan(paths []string, folder db.WatchFolder, force bool) {
+	defer m.scanActive.Unlock()
+
+	ch := make(chan string)
+	var wg sync.WaitGroup
+	for i := 0; i < scanConcurrency; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for path := range ch {
+				if m.stopped() {
+					continue
+				}
+				m.processFile(path, false, force, &folder)
+			}
+		}()
+	}
+
+	for _, path := range paths {
+		if m.stopped() {
+			break
+		}
+		ch <- path
+	}
+	close(ch)
+	wg.Wait()
 }
 
 func (m *Manager) watchLoop() {
@@ -366,7 +407,7 @@ func (m *Manager) processWorker() {
 		case <-m.stopChan:
 			return
 		case path := <-m.processChan:
-			go m.processFile(path, true, false)
+			m.processFile(path, true, false, nil)
 		}
 	}
 }
@@ -447,11 +488,7 @@ func (m *Manager) scheduleProcess(filePath string, reset bool) {
 	})
 }
 
-func (m *Manager) processFileImmediate(filePath string, force bool) {
-	m.processFile(filePath, false, force)
-}
-
-func (m *Manager) processFile(filePath string, waitForStable bool, force bool) {
+func (m *Manager) processFile(filePath string, waitForStable bool, force bool, folder *db.WatchFolder) {
 	info, err := os.Stat(filePath)
 	if err != nil || info.IsDir() {
 		return
@@ -507,9 +544,15 @@ func (m *Manager) processFile(filePath string, waitForStable bool, force bool) {
 		return
 	}
 
-	match, found := findWatchFolder(filePath)
-	if !found {
-		return
+	var match db.WatchFolder
+	if folder != nil {
+		match = *folder
+	} else {
+		var found bool
+		match, found = findWatchFolder(filePath)
+		if !found {
+			return
+		}
 	}
 
 	if !force {
@@ -538,8 +581,10 @@ func (m *Manager) processFile(filePath string, waitForStable bool, force bool) {
 	} else {
 		log.Printf("Added job for %s", filePath)
 	}
-	m.queueManager.NotifySSE("job_added", nil)
-	m.queueManager.Trigger()
+	if m.queueManager != nil {
+		m.queueManager.NotifySSE("job_added", nil)
+		m.queueManager.Trigger()
+	}
 }
 
 func checkSkip(filePath string, folder db.WatchFolder) (bool, string) {
