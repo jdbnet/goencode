@@ -18,6 +18,10 @@ GoEncode is a lightweight, high-performance media transcoding server written in 
 - **Notifications**: Optional ntfy, Discord, Gotify, or generic JSON webhooks on encode success, skip, and failure. Success messages include size saved so you can see when a job actually paid off.
 - **Docker-Ready**: Packaged in an ultra-slim container image based on Debian, with `ffmpeg` built-in.
 
+---
+
+![Gallery](img/gallery.gif)
+
 ## Deployment with Docker
 
 The easiest way to run GoEncode is via Docker using the pre-built image. Docker images do not self-update; pull a new image instead.
