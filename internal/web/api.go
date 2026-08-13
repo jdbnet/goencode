@@ -425,19 +425,23 @@ func (s *Server) handleFFmpegPreview(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
-	f.EncodeSettings.ApplyDefaults()
+	f.EncodeSettings.ApplyDefaultsFor(f.MediaType)
 
 	ext := f.OutputExt(f.MediaType)
 	input := "input" + ext
 	output := "output" + ext
 	if f.MediaType == "audio" {
 		input = "input.flac"
+		if ext == "" {
+			output = "output.flac"
+		}
 	}
 
 	opt := encoder.VideoEncodeOptions{
 		TargetResolution: f.TargetResolution,
 		VideoCodec:       f.VideoCodec,
 		AudioCodec:       f.AudioCodec,
+		AudioBitrate:     f.AudioBitrate,
 		CRF:              f.CRF,
 		Preset:           f.Preset,
 		Tune:             f.Tune,

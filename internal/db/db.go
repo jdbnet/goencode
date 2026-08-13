@@ -175,6 +175,7 @@ func ensureEncodeSettingsColumns() error {
 	}{
 		{"video_codec", "VARCHAR(32) NOT NULL DEFAULT 'libx265'"},
 		{"audio_codec", "VARCHAR(32) NOT NULL DEFAULT 'copy'"},
+		{"audio_bitrate", "VARCHAR(16) NULL"},
 		{"crf", "VARCHAR(8) NULL"},
 		{"preset", "VARCHAR(32) NULL"},
 		{"tune", "VARCHAR(32) NULL"},

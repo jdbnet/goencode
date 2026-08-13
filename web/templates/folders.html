@@ -89,6 +89,22 @@
                     <span>Keep extra streams (subs, commentary, attachments)</span>
                 </label>
             </div>
+            <div class="form-group audio-only" id="audio_format_group" style="display: none;">
+                <label>Audio Format</label>
+                <select id="audio_format" class="form-control">
+                    <option value="libmp3lame">MP3</option>
+                    <option value="aac">AAC (M4A)</option>
+                    <option value="libopus">Opus</option>
+                    <option value="libvorbis">Ogg Vorbis</option>
+                    <option value="flac">FLAC</option>
+                    <option value="pcm_s16le">WAV</option>
+                    <option value="copy">Copy (remux only)</option>
+                </select>
+            </div>
+            <div class="form-group audio-only" id="audio_bitrate_group" style="display: none;">
+                <label>Bitrate</label>
+                <input type="text" id="audio_bitrate" class="form-control" placeholder="320k" value="320k">
+            </div>
             <div class="form-group">
                 <label>Custom FFmpeg Flags (Optional)</label>
                 <input type="text" id="custom_ffmpeg_flags" class="form-control" placeholder="-metadata title=Movie">
@@ -128,6 +144,31 @@
     const PROFILES_X264 = ['baseline', 'main', 'high', 'high10'];
     const PROFILES_X265 = ['main', 'main10', 'main12'];
     const CODEC_LABELS = { libx265: 'HEVC', libx264: 'H.264', libsvtav1: 'AV1', copy: 'Copy' };
+
+    const AUDIO_CONTAINERS = {
+        libmp3lame: 'mp3',
+        aac: 'm4a',
+        libopus: 'opus',
+        libvorbis: 'ogg',
+        flac: 'flac',
+        pcm_s16le: 'wav',
+        copy: ''
+    };
+    const AUDIO_LABELS = {
+        libmp3lame: 'MP3',
+        aac: 'AAC',
+        libopus: 'Opus',
+        libvorbis: 'Vorbis',
+        flac: 'FLAC',
+        pcm_s16le: 'WAV',
+        copy: 'Copy'
+    };
+    const AUDIO_BITRATE_DEFAULTS = {
+        libmp3lame: '320k',
+        aac: '192k',
+        libopus: '128k',
+        libvorbis: '192k'
+    };
 
     const foldersBody = document.getElementById('folders-body');
     let foldersById = {};
@@ -185,11 +226,22 @@
         document.querySelectorAll('.video-only').forEach(el => {
             el.style.display = isVideo ? 'block' : 'none';
         });
+        document.querySelectorAll('.audio-only').forEach(el => {
+            el.style.display = isVideo ? 'none' : 'block';
+        });
         document.getElementById('target_resolution_group').style.display = (isVideo && !isCopy) ? 'block' : 'none';
         document.getElementById('video_crf_group').style.display = hideEncode ? 'none' : 'block';
         document.getElementById('video_preset_group').style.display = hideEncode ? 'none' : 'block';
         document.getElementById('video_tune_group').style.display = hideEncode || codec === 'libsvtav1' ? 'none' : 'block';
         document.getElementById('video_profile_group').style.display = hideEncode || codec === 'libsvtav1' ? 'none' : 'block';
+
+        const audioFmt = document.getElementById('audio_format').value;
+        const needsBitrate = !isVideo && !!AUDIO_BITRATE_DEFAULTS[audioFmt];
+        document.getElementById('audio_bitrate_group').style.display = needsBitrate ? 'block' : 'none';
+        if (needsBitrate) {
+            const br = document.getElementById('audio_bitrate');
+            br.placeholder = AUDIO_BITRATE_DEFAULTS[audioFmt] || '192k';
+        }
 
         const hasOut = document.getElementById('output_dir').value.trim() !== '';
         document.getElementById('delete_source_group').style.display = hasOut ? 'block' : 'none';
@@ -206,12 +258,13 @@
             target_resolution: isVideo ? document.getElementById('target_resolution').value : '',
             custom_ffmpeg_flags: document.getElementById('custom_ffmpeg_flags').value.trim(),
             video_codec: isVideo ? document.getElementById('video_codec').value : 'libx265',
-            audio_codec: isVideo ? document.getElementById('audio_codec').value : 'copy',
+            audio_codec: isVideo ? document.getElementById('audio_codec').value : document.getElementById('audio_format').value,
+            audio_bitrate: '',
             crf: isVideo ? document.getElementById('crf').value : '',
             preset: isVideo ? document.getElementById('preset').value : '',
             tune: isVideo ? document.getElementById('tune').value : '',
             profile: isVideo ? document.getElementById('profile').value : '',
-            container: isVideo ? document.getElementById('container').value : 'mkv',
+            container: isVideo ? document.getElementById('container').value : (AUDIO_CONTAINERS[document.getElementById('audio_format').value] || ''),
             output_dir: document.getElementById('output_dir').value.trim(),
             delete_source: document.getElementById('delete_source').checked,
             keep_original_if_larger: document.getElementById('keep_original_if_larger').checked,
@@ -223,6 +276,12 @@
             payload.preset = '';
             payload.tune = '';
             payload.profile = '';
+        }
+        if (!isVideo) {
+            const fmt = payload.audio_codec;
+            if (AUDIO_BITRATE_DEFAULTS[fmt]) {
+                payload.audio_bitrate = document.getElementById('audio_bitrate').value.trim() || AUDIO_BITRATE_DEFAULTS[fmt];
+            }
         }
         return payload;
     }
@@ -254,6 +313,13 @@
         document.getElementById('delete_source').checked = !!f.delete_source;
         document.getElementById('keep_original_if_larger').checked = !!f.keep_original_if_larger;
         document.getElementById('keep_extra_streams').checked = f.keep_extra_streams !== false;
+        let audioFmt = f.audio_codec || 'libmp3lame';
+        const cont = f.container || '';
+        if (f.media_type === 'audio' && (audioFmt === 'copy' || audioFmt === '') && (cont === 'mkv' || cont === 'mp4' || cont === '')) {
+            audioFmt = 'libmp3lame';
+        }
+        document.getElementById('audio_format').value = AUDIO_CONTAINERS[audioFmt] !== undefined ? audioFmt : 'libmp3lame';
+        document.getElementById('audio_bitrate').value = f.audio_bitrate || AUDIO_BITRATE_DEFAULTS[audioFmt] || '';
         updateCodecOptions(f.preset || '', f.tune || '', f.profile || '');
         updateFormVisibility();
         document.getElementById('folder-form-title').textContent = 'Edit Watch Folder';
@@ -265,7 +331,9 @@
 
     function encodeSummary(f) {
         if (f.media_type === 'audio') {
-            const parts = ['Audio', 'MP3'];
+            const fmt = (f.audio_codec === 'copy' && (f.container === 'mkv' || f.container === 'mp4' || !f.container)) ? 'libmp3lame' : (f.audio_codec || 'libmp3lame');
+            const parts = ['Audio', AUDIO_LABELS[fmt] || fmt];
+            if (AUDIO_BITRATE_DEFAULTS[fmt]) parts.push(f.audio_bitrate || AUDIO_BITRATE_DEFAULTS[fmt]);
             if (f.keep_original_if_larger) parts.push('keep if larger');
             return parts.join(' · ');
         }
@@ -460,6 +528,16 @@
     document.getElementById('media_type').addEventListener('change', updateFormVisibility);
     document.getElementById('video_codec').addEventListener('change', function () {
         updateCodecOptions('', '', '');
+        updateFormVisibility();
+    });
+    document.getElementById('audio_format').addEventListener('change', function () {
+        const fmt = this.value;
+        const br = document.getElementById('audio_bitrate');
+        if (AUDIO_BITRATE_DEFAULTS[fmt]) {
+            br.value = AUDIO_BITRATE_DEFAULTS[fmt];
+        } else {
+            br.value = '';
+        }
         updateFormVisibility();
     });
     document.getElementById('output_dir').addEventListener('input', updateFormVisibility);

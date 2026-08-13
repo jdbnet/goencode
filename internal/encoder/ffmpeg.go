@@ -172,7 +172,12 @@ func (m *FFmpegManager) PreviewCommand(mediaType, inputPath, outputPath string, 
 	}
 	var cmd *exec.Cmd
 	if mediaType == "audio" {
-		cmd, _ = m.BuildAudioCmd(inputPath, outputPath, opt.CustomFlags)
+		cmd, _ = m.BuildAudioCmd(inputPath, outputPath, AudioEncodeOptions{
+			Codec:       opt.AudioCodec,
+			Bitrate:     opt.AudioBitrate,
+			Container:   opt.Container,
+			CustomFlags: opt.CustomFlags,
+		})
 	} else {
 		cmd, _ = m.BuildVideoCmd(inputPath, outputPath, opt)
 	}

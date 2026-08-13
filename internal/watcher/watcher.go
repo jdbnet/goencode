@@ -543,10 +543,11 @@ func (m *Manager) processFile(filePath string, waitForStable bool, force bool) {
 }
 
 func checkSkip(filePath string, folder db.WatchFolder) (bool, string) {
+	folder.EncodeSettings.ApplyDefaultsFor(folder.MediaType)
 	if folder.MediaType == "video" {
 		return encoder.CheckVideoSkip(filePath, folder.TargetResolution, folder.VideoCodec)
 	}
-	return encoder.CheckAudioSkip(filePath)
+	return encoder.CheckAudioSkip(filePath, folder.AudioCodec, folder.AudioBitrate)
 }
 
 func findWatchFolder(filePath string) (db.WatchFolder, bool) {

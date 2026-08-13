@@ -1,12 +1,14 @@
 package db
 
 import (
+	"strings"
 	"time"
 )
 
 type EncodeSettings struct {
 	VideoCodec           string `json:"video_codec"`
 	AudioCodec           string `json:"audio_codec"`
+	AudioBitrate         string `json:"audio_bitrate"`
 	CRF                  string `json:"crf"`
 	Preset               string `json:"preset"`
 	Tune                 string `json:"tune"`
@@ -19,6 +21,14 @@ type EncodeSettings struct {
 }
 
 func (e *EncodeSettings) ApplyDefaults() {
+	e.ApplyDefaultsFor("video")
+}
+
+func (e *EncodeSettings) ApplyDefaultsFor(mediaType string) {
+	if mediaType == "audio" {
+		e.applyAudioDefaults()
+		return
+	}
 	if e.VideoCodec == "" {
 		e.VideoCodec = "libx265"
 	}
@@ -30,9 +40,79 @@ func (e *EncodeSettings) ApplyDefaults() {
 	}
 }
 
+func (e *EncodeSettings) applyAudioDefaults() {
+	codec := strings.ToLower(strings.TrimSpace(e.AudioCodec))
+	container := strings.ToLower(strings.TrimSpace(e.Container))
+	if codec == "" || (codec == "copy" && (container == "mkv" || container == "mp4")) {
+		codec = "libmp3lame"
+		container = "mp3"
+	}
+	e.AudioCodec = codec
+	if container == "" {
+		container = AudioContainerForCodec(codec)
+	}
+	e.Container = container
+	if e.VideoCodec == "" {
+		e.VideoCodec = "libx265"
+	}
+	if e.AudioBitrate == "" && AudioCodecNeedsBitrate(codec) {
+		e.AudioBitrate = DefaultAudioBitrate(codec)
+	}
+}
+
+func AudioContainerForCodec(codec string) string {
+	switch strings.ToLower(strings.TrimSpace(codec)) {
+	case "libmp3lame", "mp3":
+		return "mp3"
+	case "aac":
+		return "m4a"
+	case "libopus", "opus":
+		return "opus"
+	case "libvorbis", "vorbis":
+		return "ogg"
+	case "flac":
+		return "flac"
+	case "pcm_s16le", "wav":
+		return "wav"
+	default:
+		return ""
+	}
+}
+
+func AudioCodecNeedsBitrate(codec string) bool {
+	switch strings.ToLower(strings.TrimSpace(codec)) {
+	case "flac", "pcm_s16le", "wav", "copy", "":
+		return false
+	default:
+		return true
+	}
+}
+
+func DefaultAudioBitrate(codec string) string {
+	switch strings.ToLower(strings.TrimSpace(codec)) {
+	case "libmp3lame", "mp3":
+		return "320k"
+	case "aac":
+		return "192k"
+	case "libopus", "opus":
+		return "128k"
+	case "libvorbis", "vorbis":
+		return "192k"
+	default:
+		return "192k"
+	}
+}
+
 func (e EncodeSettings) OutputExt(mediaType string) string {
 	if mediaType == "audio" {
-		return ".mp3"
+		c := strings.ToLower(strings.TrimSpace(e.Container))
+		if c == "" {
+			c = AudioContainerForCodec(e.AudioCodec)
+		}
+		if c == "" {
+			return ""
+		}
+		return "." + c
 	}
 	if e.Container == "mp4" {
 		return ".mp4"
@@ -53,7 +133,7 @@ type WatchFolder struct {
 }
 
 func (f WatchFolder) NewJob(filePath string, originalSize int64, priority int) Job {
-	f.EncodeSettings.ApplyDefaults()
+	f.EncodeSettings.ApplyDefaultsFor(f.MediaType)
 	return Job{
 		FilePath:         filePath,
 		MediaType:        f.MediaType,

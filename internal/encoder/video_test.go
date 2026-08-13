@@ -172,10 +172,15 @@ func TestPreviewCommandIncludesCustomFlags(t *testing.T) {
 func TestPreviewCommandAudio(t *testing.T) {
 	m := NewManager("ffmpeg")
 	cmd := m.PreviewCommand("audio", "input.flac", "output.mp3", VideoEncodeOptions{
-		CustomFlags: "-q:a 2",
+		AudioCodec:   "libmp3lame",
+		AudioBitrate: "256k",
+		CustomFlags:  "-q:a 2",
 	})
 	if !strings.Contains(cmd, "-c:a libmp3lame") {
 		t.Errorf("expected mp3 encoder, got %s", cmd)
+	}
+	if !strings.Contains(cmd, "-b:a 256k") {
+		t.Errorf("expected 256k, got %s", cmd)
 	}
 	if !strings.Contains(cmd, "-q:a 2") {
 		t.Errorf("expected custom flag, got %s", cmd)

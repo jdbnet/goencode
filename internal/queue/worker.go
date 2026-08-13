@@ -167,6 +167,7 @@ func (m *Manager) processNextJob() {
 func (m *Manager) runEncoder(ctx context.Context, job *db.Job) error {
 	startTime := time.Now()
 	defer m.cleanupTemps(job.ID)
+	job.EncodeSettings.ApplyDefaultsFor(job.MediaType)
 
 	if _, err := os.Stat(job.FilePath); os.IsNotExist(err) {
 		return fmt.Errorf("source file missing")
@@ -186,6 +187,12 @@ func (m *Manager) runEncoder(ctx context.Context, job *db.Job) error {
 
 	ext := filepath.Ext(job.FilePath)
 	outExt := job.OutputExt(job.MediaType)
+	if outExt == "" {
+		outExt = filepath.Ext(job.FilePath)
+		if outExt == "" {
+			outExt = ".mka"
+		}
+	}
 	baseName := strings.TrimSuffix(filepath.Base(job.FilePath), ext)
 	tempOutPath := filepath.Join(m.TempDir, fmt.Sprintf("temp_%d_%s%s", job.ID, baseName, outExt))
 
@@ -257,7 +264,7 @@ func (m *Manager) runEncoder(ctx context.Context, job *db.Job) error {
 		}
 	} else {
 		if !job.Force {
-			if skip, reason := encoder.CheckAudioSkip(job.FilePath); skip {
+			if skip, reason := encoder.CheckAudioSkip(job.FilePath, job.AudioCodec, job.AudioBitrate); skip {
 				log.Printf("Skipping audio %d - %s", job.ID, reason)
 				job.ErrorMessage = reason
 				err := db.AddJobReport(*job, "skipped", originalSize, 0, 0)
@@ -277,7 +284,12 @@ func (m *Manager) runEncoder(ctx context.Context, job *db.Job) error {
 			return fmt.Errorf("failed to copy source to temp: %w", err)
 		}
 
-		execCmd, cmdErr = m.encoder.BuildAudioCmd(tempInPath, tempOutPath, job.FFmpegFlags)
+		execCmd, cmdErr = m.encoder.BuildAudioCmd(tempInPath, tempOutPath, encoder.AudioEncodeOptions{
+			Codec:       job.AudioCodec,
+			Bitrate:     job.AudioBitrate,
+			Container:   job.Container,
+			CustomFlags: job.FFmpegFlags,
+		})
 		if cmdErr != nil {
 			return cmdErr
 		}

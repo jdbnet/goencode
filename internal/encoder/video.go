@@ -12,6 +12,7 @@ type VideoEncodeOptions struct {
 	VideoCodec, AudioCodec        string
 	CRF, Preset, Tune, Profile    string
 	Container, CustomFlags        string
+	AudioBitrate                  string
 	OriginalWidth, OriginalHeight int
 	KeepExtraStreams              bool
 }
