@@ -2,6 +2,7 @@ package web
 
 import (
 	"encoding/json"
+	"log"
 	"net/http"
 	"strconv"
 	"strings"
@@ -124,11 +125,82 @@ func (s *Server) handleDeleteWatchFolder(w http.ResponseWriter, r *http.Request)
 		http.Error(w, "Invalid ID", http.StatusBadRequest)
 		return
 	}
+	folder, err := db.GetWatchFolderByID(id)
+	if err != nil {
+		http.Error(w, "Folder not found", http.StatusNotFound)
+		return
+	}
+	s.wm.DropPendingForFolder(folder.FolderPath)
 	if err := db.DeleteWatchFolder(id); err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
 	s.wm.Reload()
+	n, err := db.DeleteJobsUnderPath(folder.FolderPath)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	if n > 0 {
+		log.Printf("Removed %d queued jobs for deleted watch folder %s", n, folder.FolderPath)
+	}
+	s.qm.NotifySSE("queue_updated", nil)
+	w.WriteHeader(http.StatusOK)
+}
+
+func (s *Server) handleSetWatchFolderEnabled(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	id, err := strconv.Atoi(strings.TrimPrefix(r.URL.Path, "/api/folders/enabled/"))
+	if err != nil {
+		http.Error(w, "Invalid ID", http.StatusBadRequest)
+		return
+	}
+
+	var body struct {
+		Enabled *bool `json:"enabled"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	if body.Enabled == nil {
+		http.Error(w, "enabled is required", http.StatusBadRequest)
+		return
+	}
+	enabled := *body.Enabled
+
+	folder, err := db.GetWatchFolderByID(id)
+	if err != nil {
+		http.Error(w, "Folder not found", http.StatusNotFound)
+		return
+	}
+
+	if err := db.SetWatchFolderEnabled(id, enabled); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	if !enabled {
+		s.wm.DropPendingForFolder(folder.FolderPath)
+	}
+
+	s.wm.Reload()
+
+	if !enabled {
+		n, err := db.DeleteJobsUnderPath(folder.FolderPath)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		log.Printf("Disabled watch folder %s (removed %d queued jobs)", folder.FolderPath, n)
+		s.qm.NotifySSE("queue_updated", nil)
+	} else {
+		log.Printf("Enabled watch folder %s", folder.FolderPath)
+	}
+
 	w.WriteHeader(http.StatusOK)
 }
 

@@ -81,6 +81,28 @@ func (m *Manager) Reload() {
 	m.scanFolders(true)
 }
 
+func (m *Manager) DropPendingForFolder(folderPath string) {
+	folderPath = filepath.Clean(strings.TrimSpace(folderPath))
+
+	m.timersMu.Lock()
+	for path, t := range m.timers {
+		if pathUnderFolder(path, folderPath) {
+			t.Stop()
+			delete(m.timers, path)
+		}
+	}
+	m.timersMu.Unlock()
+
+	m.dirTimersMu.Lock()
+	for path, t := range m.dirTimers {
+		if pathUnderFolder(path, folderPath) {
+			t.Stop()
+			delete(m.dirTimers, path)
+		}
+	}
+	m.dirTimersMu.Unlock()
+}
+
 func (m *Manager) periodicScanLoop() {
 	ticker := time.NewTicker(periodicScanEvery)
 	defer ticker.Stop()

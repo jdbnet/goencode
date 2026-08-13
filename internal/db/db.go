@@ -44,7 +44,7 @@ func runMigrations() error {
 			media_type ENUM('video', 'audio') NOT NULL,
 			target_resolution VARCHAR(20),
 			custom_ffmpeg_flags TEXT,
-			enabled BOOLEAN DEFAULT TRUE,
+			enabled BOOLEAN NOT NULL DEFAULT TRUE,
 			created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
 			updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
 		)`,
@@ -87,6 +87,37 @@ func runMigrations() error {
 		}
 	}
 
+	if err := ensureWatchFolderEnabledColumn(); err != nil {
+		return err
+	}
+
 	log.Println("Database schemas initialized")
+	return nil
+}
+
+func ensureWatchFolderEnabledColumn() error {
+	var count int
+	err := DB.QueryRow(`
+		SELECT COUNT(*) FROM information_schema.COLUMNS
+		WHERE TABLE_SCHEMA = DATABASE()
+		  AND TABLE_NAME = 'watch_folders'
+		  AND COLUMN_NAME = 'enabled'
+	`).Scan(&count)
+	if err != nil {
+		return fmt.Errorf("migration failed: check enabled column: %w", err)
+	}
+
+	if count == 0 {
+		_, err = DB.Exec(`ALTER TABLE watch_folders ADD COLUMN enabled BOOLEAN NOT NULL DEFAULT TRUE`)
+		if err != nil {
+			return fmt.Errorf("migration failed: add enabled column: %w", err)
+		}
+		log.Println("Migrated watch_folders: enabled column added, existing folders enabled")
+	}
+
+	if _, err := DB.Exec(`UPDATE watch_folders SET enabled = TRUE WHERE enabled IS NULL`); err != nil {
+		return fmt.Errorf("migration failed: backfill enabled column: %w", err)
+	}
+
 	return nil
 }

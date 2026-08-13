@@ -139,6 +139,7 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("/api/folders", s.handleGetWatchFolders)
 	s.mux.HandleFunc("/api/folders/add", s.handleAddWatchFolder)
 	s.mux.HandleFunc("/api/folders/scan/", s.handleScanWatchFolder)
+	s.mux.HandleFunc("/api/folders/enabled/", s.handleSetWatchFolderEnabled)
 	s.mux.HandleFunc("/api/folders/delete/", s.handleDeleteWatchFolder)
 	s.mux.HandleFunc("/api/logs", s.handleGetLogs)
 

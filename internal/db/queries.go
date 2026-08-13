@@ -2,6 +2,7 @@ package db
 
 import (
 	"database/sql"
+	"path/filepath"
 	"strings"
 )
 
@@ -41,6 +42,37 @@ func AddWatchFolder(f WatchFolder) error {
 func DeleteWatchFolder(id int) error {
 	_, err := DB.Exec(`DELETE FROM watch_folders WHERE id = ?`, id)
 	return err
+}
+
+func GetWatchFolderByID(id int) (WatchFolder, error) {
+	var f WatchFolder
+	var targetRes, ffmpegFlags sql.NullString
+	err := DB.QueryRow(`SELECT id, folder_path, media_type, target_resolution, custom_ffmpeg_flags, enabled, created_at, updated_at FROM watch_folders WHERE id = ?`, id).
+		Scan(&f.ID, &f.FolderPath, &f.MediaType, &targetRes, &ffmpegFlags, &f.Enabled, &f.CreatedAt, &f.UpdatedAt)
+	if err != nil {
+		return f, err
+	}
+	if targetRes.Valid {
+		f.TargetResolution = targetRes.String
+	}
+	if ffmpegFlags.Valid {
+		f.CustomFFmpegFlags = ffmpegFlags.String
+	}
+	return f, nil
+}
+
+func SetWatchFolderEnabled(id int, enabled bool) error {
+	_, err := DB.Exec(`UPDATE watch_folders SET enabled = ? WHERE id = ?`, enabled, id)
+	return err
+}
+
+func DeleteJobsUnderPath(folderPath string) (int64, error) {
+	folderPath = filepath.Clean(strings.TrimSpace(folderPath))
+	res, err := DB.Exec(`DELETE FROM jobs WHERE file_path = ? OR file_path LIKE ?`, folderPath, folderPath+"/%")
+	if err != nil {
+		return 0, err
+	}
+	return res.RowsAffected()
 }
 
 func nullStr(s string) sql.NullString {

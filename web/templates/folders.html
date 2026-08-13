@@ -10,6 +10,7 @@
                         <th>Type</th>
                         <th>Resolution</th>
                         <th>Flags</th>
+                        <th>Enabled</th>
                         <th>Actions</th>
                     </tr>
                 </thead>
@@ -82,13 +83,19 @@
 
     function renderFolders(folders) {
         foldersBody.innerHTML = folders.map(f => `
-            <tr>
+            <tr class="${f.enabled ? '' : 'folder-disabled'}">
                 <td style="word-break: break-all;">${f.folder_path}</td>
                 <td><span class="badge" style="background: var(--surface-hover); color: var(--text-primary); border-color: var(--border);">${f.media_type}</span></td>
                 <td>${f.target_resolution || '-'}</td>
                 <td><code style="background: var(--bg); padding: 0.2rem; border-radius: 4px;">${f.custom_ffmpeg_flags || '-'}</code></td>
                 <td>
-                    <button class="btn btn-sm btn-outline" onclick="scanFolder(${f.id}, this)">Scan Now</button>
+                    <label class="switch" title="${f.enabled ? 'Disable' : 'Enable'} watch folder">
+                        <input type="checkbox" ${f.enabled ? 'checked' : ''} onchange="setFolderEnabled(${f.id}, this)">
+                        <span class="slider"></span>
+                    </label>
+                </td>
+                <td>
+                    <button class="btn btn-sm btn-outline" ${f.enabled ? '' : 'disabled'} onclick="scanFolder(${f.id}, this)">Scan Now</button>
                     <button class="btn btn-sm btn-danger" onclick="deleteFolder(${f.id})">Delete</button>
                 </td>
             </tr>
@@ -128,6 +135,33 @@
             loadFolders();
         } else {
             alert('Failed to add folder');
+        }
+    }
+
+    async function setFolderEnabled(id, checkbox) {
+        const enabled = checkbox.checked;
+        if (!enabled && !confirm('Disable this watch folder? Queued jobs for this folder will be removed.')) {
+            checkbox.checked = true;
+            return;
+        }
+        checkbox.disabled = true;
+        try {
+            const res = await fetch('/api/folders/enabled/' + id, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ enabled })
+            });
+            if (res.ok) {
+                loadFolders();
+            } else {
+                checkbox.checked = !enabled;
+                alert('Failed to update folder: ' + await res.text());
+            }
+        } catch (e) {
+            checkbox.checked = !enabled;
+            alert('Error: ' + e.message);
+        } finally {
+            checkbox.disabled = false;
         }
     }
 

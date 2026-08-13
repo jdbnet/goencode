@@ -151,6 +151,12 @@ tbody tr:hover {
 	font-size: 0.75rem;
 }
 
+.btn:disabled {
+	opacity: 0.45;
+	cursor: not-allowed;
+	box-shadow: none;
+}
+
 .btn-danger {
 	background: transparent;
 	color: var(--error);
@@ -178,6 +184,56 @@ tbody tr:hover {
 .badge.success { background: rgba(33, 209, 152, 0.1); color: var(--success); border-color: rgba(33, 209, 152, 0.3); }
 .badge.failed { background: rgba(239, 68, 68, 0.1); color: var(--error); border-color: rgba(239, 68, 68, 0.3); }
 .badge.skipped { background: rgba(136, 136, 136, 0.1); color: var(--text-secondary); border-color: rgba(136, 136, 136, 0.3); }
+
+tbody tr.folder-disabled {
+	opacity: 0.55;
+}
+
+.switch {
+	position: relative;
+	display: inline-block;
+	width: 36px;
+	height: 20px;
+	vertical-align: middle;
+}
+
+.switch input {
+	opacity: 0;
+	width: 0;
+	height: 0;
+}
+
+.slider {
+	position: absolute;
+	cursor: pointer;
+	inset: 0;
+	background: var(--surface-hover);
+	border: 1px solid var(--border);
+	border-radius: 20px;
+	transition: 0.2s;
+}
+
+.slider:before {
+	content: "";
+	position: absolute;
+	height: 14px;
+	width: 14px;
+	left: 2px;
+	bottom: 2px;
+	background: var(--text-secondary);
+	border-radius: 50%;
+	transition: 0.2s;
+}
+
+.switch input:checked + .slider {
+	background: rgba(33, 209, 152, 0.25);
+	border-color: var(--accent);
+}
+
+.switch input:checked + .slider:before {
+	transform: translateX(16px);
+	background: var(--accent);
+}
 
 /* Progress bar */
 .progress-bar {
