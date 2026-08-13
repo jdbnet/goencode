@@ -77,7 +77,7 @@ func (s *Server) handleCancelJob(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Invalid ID", http.StatusBadRequest)
 		return
 	}
-	if err := db.DeleteJob(id); err != nil {
+	if err := s.qm.Cancel(id); err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}

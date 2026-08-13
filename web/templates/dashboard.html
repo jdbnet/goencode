@@ -206,6 +206,11 @@
         forgetProcessingStart(data.id);
         loadQueue();
     });
+    window.sse.addEventListener('job_cancelled', (e) => {
+        const data = JSON.parse(e.data);
+        forgetProcessingStart(data.id);
+        loadQueue();
+    });
     window.sse.addEventListener('job_added', () => loadQueue());
 
     window.sse.addEventListener('progress', (e) => {

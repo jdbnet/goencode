@@ -254,6 +254,15 @@ func UpdateJobStatus(id int, status, errMsg string) error {
 	return err
 }
 
+func ClaimJob(id int) (bool, error) {
+	res, err := DB.Exec(`UPDATE jobs SET status = 'processing', error_message = NULL, updated_at = UTC_TIMESTAMP(6) WHERE id = ? AND status = 'pending'`, id)
+	if err != nil {
+		return false, err
+	}
+	n, err := res.RowsAffected()
+	return n == 1, err
+}
+
 func BumpJobPriority(id int) error {
 	_, err := DB.Exec(`UPDATE jobs SET priority = priority + 1 WHERE id = ?`, id)
 	return err

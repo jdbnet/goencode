@@ -3,7 +3,10 @@ package queue
 import (
 	"bufio"
 	"bytes"
+	"context"
+	"errors"
 	"fmt"
+	"io"
 	"log"
 	"os"
 	"os/exec"
@@ -14,10 +17,13 @@ import (
 	"goencode/internal/db"
 	"goencode/internal/encoder"
 	"goencode/internal/notify"
-	"io"
 )
 
-func copyFile(src, dst string) error {
+func copyFile(ctx context.Context, src, dst string) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+
 	in, err := os.Open(src)
 	if err != nil {
 		return err
@@ -30,9 +36,25 @@ func copyFile(src, dst string) error {
 	}
 	defer out.Close()
 
-	_, err = io.Copy(out, in)
-	if err != nil {
-		return err
+	buf := make([]byte, 1024*1024)
+	for {
+		if err := ctx.Err(); err != nil {
+			out.Close()
+			os.Remove(dst)
+			return err
+		}
+		n, readErr := in.Read(buf)
+		if n > 0 {
+			if _, writeErr := out.Write(buf[:n]); writeErr != nil {
+				return writeErr
+			}
+		}
+		if readErr == io.EOF {
+			break
+		}
+		if readErr != nil {
+			return readErr
+		}
 	}
 	return out.Sync()
 }
@@ -50,7 +72,7 @@ func (m *Manager) workerLoop() {
 
 func (m *Manager) processNextJob() {
 	m.mu.Lock()
-	if m.isProcessing {
+	if m.isProcessing || m.shuttingDown {
 		m.mu.Unlock()
 		return
 	}
@@ -59,11 +81,12 @@ func (m *Manager) processNextJob() {
 
 	var hasJobs bool
 	defer func() {
+		m.endJob()
 		m.mu.Lock()
 		m.isProcessing = false
+		shuttingDown := m.shuttingDown
 		m.mu.Unlock()
-		// Only trigger immediately if we know there might be more jobs
-		if hasJobs {
+		if hasJobs && !shuttingDown {
 			m.Trigger()
 		}
 	}()
@@ -80,19 +103,56 @@ func (m *Manager) processNextJob() {
 	hasJobs = true
 
 	job := jobs[0]
-	log.Printf("Starting job %d for %s", job.ID, job.FilePath)
-
-	err = db.UpdateJobStatus(job.ID, "processing", "")
-	if err != nil {
-		log.Printf("Failed to update job status: %v", err)
+	foundPending := false
+	for _, j := range jobs {
+		if j.Status == "pending" {
+			job = j
+			foundPending = true
+			break
+		}
+	}
+	if !foundPending {
+		hasJobs = false
 		return
 	}
+
+	ctx := m.beginJob(job.ID)
+	if ctx.Err() != nil {
+		return
+	}
+
+	claimed, err := db.ClaimJob(job.ID)
+	if err != nil {
+		log.Printf("Failed to claim job %d: %v", job.ID, err)
+		return
+	}
+	if !claimed {
+		hasJobs = true
+		return
+	}
+
+	log.Printf("Starting job %d for %s", job.ID, job.FilePath)
 
 	job.Status = "processing"
 	job.UpdatedAt = time.Now()
 	m.NotifySSE("job_started", job)
 
-	err = m.runEncoder(job)
+	err = m.runEncoder(ctx, job)
+	if ctx.Err() != nil || errors.Is(err, context.Canceled) {
+		m.cleanupTemps()
+		if m.isShuttingDown() {
+			log.Printf("Job %d interrupted by shutdown", job.ID)
+			job.ErrorMessage = "Interrupted by shutdown"
+			_ = db.AddJobReport(job, "failed", 0, 0, 0)
+			_ = db.DeleteJob(job.ID)
+			return
+		}
+		log.Printf("Job %d cancelled", job.ID)
+		_ = db.DeleteJob(job.ID)
+		m.NotifySSE("job_cancelled", map[string]interface{}{"id": job.ID})
+		m.NotifySSE("queue_updated", nil)
+		return
+	}
 	if err != nil {
 		log.Printf("Job %d failed: %v", job.ID, err)
 		db.UpdateJobStatus(job.ID, "failed", err.Error())
@@ -109,8 +169,9 @@ func (m *Manager) processNextJob() {
 	}
 }
 
-func (m *Manager) runEncoder(job db.Job) error {
+func (m *Manager) runEncoder(ctx context.Context, job db.Job) error {
 	startTime := time.Now()
+	defer m.cleanupTemps()
 
 	if _, err := os.Stat(job.FilePath); os.IsNotExist(err) {
 		return fmt.Errorf("source file missing")
@@ -142,6 +203,11 @@ func (m *Manager) runEncoder(job db.Job) error {
 	duration, _ := m.encoder.ProbeDuration(job.FilePath)
 
 	tempInPath := filepath.Join(m.TempDir, fmt.Sprintf("temp_in_%d_%s", job.ID, filepath.Base(job.FilePath)))
+	m.addTemps(tempInPath, tempOutPath)
+
+	if err := ctx.Err(); err != nil {
+		return err
+	}
 
 	var cmdErr error
 	var execCmd *exec.Cmd
@@ -159,10 +225,9 @@ func (m *Manager) runEncoder(job db.Job) error {
 		}
 
 		log.Printf("Copying %s to %s before encoding...", job.FilePath, tempInPath)
-		if err := copyFile(job.FilePath, tempInPath); err != nil {
+		if err := copyFile(ctx, job.FilePath, tempInPath); err != nil {
 			return fmt.Errorf("failed to copy source to temp: %w", err)
 		}
-		defer os.Remove(tempInPath)
 
 		execCmd, err = m.encoder.BuildVideoCmd(tempInPath, tempOutPath, encoder.VideoEncodeOptions{
 			TargetResolution: job.TargetResolution,
@@ -188,16 +253,21 @@ func (m *Manager) runEncoder(job db.Job) error {
 		}
 
 		log.Printf("Copying %s to %s before encoding...", job.FilePath, tempInPath)
-		if err := copyFile(job.FilePath, tempInPath); err != nil {
+		if err := copyFile(ctx, job.FilePath, tempInPath); err != nil {
 			return fmt.Errorf("failed to copy source to temp: %w", err)
 		}
-		defer os.Remove(tempInPath)
 
 		execCmd, cmdErr = m.encoder.BuildAudioCmd(tempInPath, tempOutPath, job.FFmpegFlags)
 		if cmdErr != nil {
 			return cmdErr
 		}
 	}
+
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+
+	prepareCmd(execCmd)
 
 	stderr, err := execCmd.StderrPipe()
 	if err != nil {
@@ -207,6 +277,7 @@ func (m *Manager) runEncoder(job db.Job) error {
 	if err := execCmd.Start(); err != nil {
 		return fmt.Errorf("failed to start ffmpeg: %w", err)
 	}
+	m.setCurrentCmd(execCmd)
 
 	scanner := bufio.NewScanner(stderr)
 	scanner.Split(bufio.ScanLines)
@@ -244,7 +315,13 @@ func (m *Manager) runEncoder(job db.Job) error {
 	}()
 
 	if err := execCmd.Wait(); err != nil {
+		if ctx.Err() != nil {
+			return ctx.Err()
+		}
 		return fmt.Errorf("ffmpeg error: %v, last output: %s", err, lastErrLine)
+	}
+	if err := ctx.Err(); err != nil {
+		return err
 	}
 
 	// Validate format integrity
@@ -294,7 +371,7 @@ func (m *Manager) runEncoder(job db.Job) error {
 
 	log.Printf("Copying encoded file back to %s...", finalOutPath)
 	if err := os.Rename(tempOutPath, finalOutPath); err != nil {
-		if err := copyFile(tempOutPath, finalOutPath); err != nil {
+		if err := copyFile(ctx, tempOutPath, finalOutPath); err != nil {
 			return fmt.Errorf("failed to move output: %w", err)
 		}
 		os.Remove(tempOutPath)
