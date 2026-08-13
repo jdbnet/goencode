@@ -32,4 +32,4 @@ EXPOSE 8080
 
 # Run the binary
 ENTRYPOINT ["/app/goencode"]
-CMD ["--config", "/etc/goencode/config.yaml"]
+CMD ["--no-update", "--config", "/etc/goencode/config.yaml"]

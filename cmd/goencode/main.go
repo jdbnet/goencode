@@ -11,6 +11,7 @@ import (
 	"goencode/internal/db"
 	"goencode/internal/logger"
 	"goencode/internal/queue"
+	"goencode/internal/updater"
 	"goencode/internal/watcher"
 	"goencode/internal/web"
 )
@@ -19,7 +20,12 @@ var Version string = "dev"
 
 func main() {
 	configPath := flag.String("config", "goencode.yaml", "Path to configuration file")
+	noUpdate := flag.Bool("no-update", false, "Disable automatic update check on startup")
 	flag.Parse()
+
+	if err := updater.MaybeUpdate(Version, *noUpdate); err != nil {
+		log.Printf("Update check failed, continuing: %v", err)
+	}
 
 	cfg, err := config.LoadConfig(*configPath)
 	if err != nil {
@@ -31,7 +37,7 @@ func main() {
 	}
 
 	sseServer := web.NewSSEServer()
-	
+
 	// Initialize logger
 	logger.Init(sseServer.Broadcast)
 
@@ -47,7 +53,7 @@ func main() {
 	defer wm.Stop()
 
 	server := web.NewServer(cfg, qm, wm, sseServer, Version)
-	
+
 	go func() {
 		log.Printf("Starting GoEncode Web UI (v%s) on %s:%d", Version, cfg.Server.ListenAddr, cfg.Server.Port)
 		if err := server.Start(); err != nil {

@@ -66,4 +66,9 @@ jobs:
           AWS_DEFAULT_REGION: auto
           R2_ENDPOINT: ${{ secrets.R2_ENDPOINT_URL }}
         run: |
+          VERSION="${{ steps.semantic.outputs.version }}"
+          printf '%s\n' "$VERSION" > goencode.version
+          sha256sum goencode | awk '{print $1}' > goencode.sha256
           aws s3 cp goencode s3://apps/goencode --endpoint-url "$R2_ENDPOINT"
+          aws s3 cp goencode.version s3://apps/goencode.version --endpoint-url "$R2_ENDPOINT"
+          aws s3 cp goencode.sha256 s3://apps/goencode.sha256 --endpoint-url "$R2_ENDPOINT"

@@ -80,6 +80,8 @@ You'll need to make sure ```ffmpeg``` and ```gzip``` are available on your syste
 
 You'll also need to create the config file at ```/etc/goencode/goencode.yaml```. You can copy and edit the example [here](goencode.yaml)
 
+The binary checks for updates on startup and replaces itself when a newer release is available. Pass `--no-update` or set `GOENCODE_NO_UPDATE=1` to disable this. Docker images do not self-update; pull a new image instead.
+
 ## Configuration
 
 GoEncode can be configured via `goencode.yaml` or entirely via environment variables (ideal for Docker/Kubernetes). Environment variables take precedence over the YAML file.
@@ -100,3 +102,4 @@ GoEncode can be configured via `goencode.yaml` or entirely via environment varia
 | `GOENCODE_AUTH_PASS` | Password for the web UI | |
 | `GOENCODE_WEBHOOK_URL` | Webhook URL for job failure notifications | |
 | `GOENCODE_ENCODER_TEMP`| Temp directory for processing jobs | `/tmp/goencode` |
+| `GOENCODE_NO_UPDATE` | Set to `1` or `true` to disable binary auto-update on startup | |
