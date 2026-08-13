@@ -151,6 +151,11 @@
         toast('Encode window cleared');
     }
 
+    const processingProgress = new Map();
+    const etaMinElapsedMs = 30000;
+    const etaMinPercent = 5;
+    const etaMaxRemainingMs = 48 * 3600 * 1000;
+
     function formatElapsed(ms) {
         const totalSecs = Math.floor(ms / 1000);
         if (totalSecs < 0) return '0s';
@@ -171,6 +176,51 @@
         return parts.join(' ');
     }
 
+    function formatRemaining(ms) {
+        const totalMins = Math.round(ms / 60000);
+        if (totalMins < 1) return '< 1m';
+        const hours = Math.floor(totalMins / 60);
+        const minutes = totalMins % 60;
+        if (hours > 0) {
+            return minutes > 0 ? `${hours}h ${minutes}m` : `${hours}h`;
+        }
+        return `${minutes}m`;
+    }
+
+    function estimateRemainingMs(elapsedMs, pct) {
+        if (!Number.isFinite(elapsedMs) || !Number.isFinite(pct)) return null;
+        if (elapsedMs < etaMinElapsedMs || pct < etaMinPercent) return null;
+        if (pct >= 99.5) return 0;
+        const remaining = elapsedMs * (100 - pct) / pct;
+        if (!Number.isFinite(remaining) || remaining < 0 || remaining > etaMaxRemainingMs) return null;
+        return remaining;
+    }
+
+    function formatJobTimes(elapsedMs, pct) {
+        let label = `Elapsed: ${formatElapsed(elapsedMs)}`;
+        const remaining = estimateRemainingMs(elapsedMs, pct);
+        if (remaining !== null) {
+            label += ` · Remaining: ${formatRemaining(remaining)}`;
+        }
+        return label;
+    }
+
+    function jobProgressPct(jobId) {
+        const pct = processingProgress.get(jobId);
+        return Number.isFinite(pct) ? pct : 0;
+    }
+
+    function updateJobTimes(el) {
+        const jobId = Number(el.getAttribute('data-job-id'));
+        const storedStart = processingStartTimes.get(jobId);
+        const attrStart = Number(el.getAttribute('data-start-ms'));
+        const startMs = storedStart ?? attrStart;
+        if (!Number.isFinite(startMs)) return;
+        const pct = jobProgressPct(jobId);
+        el.setAttribute('data-progress', String(pct));
+        el.innerText = formatJobTimes(Date.now() - startMs, pct);
+    }
+
     function parseJobStartMs(updatedAt) {
         if (!updatedAt) return Date.now();
         const ms = Date.parse(updatedAt);
@@ -188,6 +238,7 @@
 
     function forgetProcessingStart(jobId) {
         processingStartTimes.delete(jobId);
+        processingProgress.delete(jobId);
     }
 
     function getProcessingStartMs(job) {
@@ -226,14 +277,15 @@
             let progressHtml = '';
             if (job.status === 'processing') {
                 const startMs = getProcessingStartMs(job);
-                const formatted = formatElapsed(Date.now() - startMs);
+                const pct = jobProgressPct(job.id);
+                const pctLabel = pct > 0 ? pct.toFixed(1) + '%' : '0%';
                 progressHtml = `
                     <div class="progress-bar">
-                        <div class="progress-fill" id="progress-${job.id}" style="width: 0%"></div>
+                        <div class="progress-fill" id="progress-${job.id}" style="width: ${pct}%"></div>
                     </div>
                     <div style="display: flex; justify-content: space-between; font-size: 0.75rem; color: var(--text-secondary); margin-top: 0.25rem;">
-                        <span id="progress-text-${job.id}">0%</span>
-                        <span id="progress-elapsed-${job.id}" class="progress-elapsed" data-job-id="${job.id}" data-start-ms="${startMs}">Elapsed: ${formatted}</span>
+                        <span id="progress-text-${job.id}">${pctLabel}</span>
+                        <span id="progress-elapsed-${job.id}" class="progress-elapsed" data-job-id="${job.id}" data-start-ms="${startMs}" data-progress="${pct}">${formatJobTimes(Date.now() - startMs, pct)}</span>
                     </div>
                 `;
             }
@@ -323,24 +375,23 @@
 
     window.sse.addEventListener('progress', (e) => {
         const data = JSON.parse(e.data);
+        const pct = parseFloat(data.progress);
+        if (Number.isFinite(pct)) {
+            processingProgress.set(data.id, pct);
+        }
         const fill = document.getElementById(`progress-${data.id}`);
         const text = document.getElementById(`progress-text-${data.id}`);
         if (fill && text) {
             fill.style.width = `${data.progress}%`;
             text.innerText = `${data.progress}%`;
         }
+        const times = document.getElementById(`progress-elapsed-${data.id}`);
+        if (times) updateJobTimes(times);
     });
 
     // Update elapsed times periodically
     setInterval(() => {
-        document.querySelectorAll('.progress-elapsed').forEach(el => {
-            const jobId = Number(el.getAttribute('data-job-id'));
-            const storedStart = processingStartTimes.get(jobId);
-            const attrStart = Number(el.getAttribute('data-start-ms'));
-            const startMs = storedStart ?? attrStart;
-            if (!Number.isFinite(startMs)) return;
-            el.innerText = `Elapsed: ${formatElapsed(Date.now() - startMs)}`;
-        });
+        document.querySelectorAll('.progress-elapsed').forEach(updateJobTimes);
     }, 1000);
 
     // Initial load
