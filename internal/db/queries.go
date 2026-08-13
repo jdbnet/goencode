@@ -8,7 +8,7 @@ import (
 
 const folderSelectCols = `id, folder_path, media_type, target_resolution, custom_ffmpeg_flags, enabled, video_codec, audio_codec, audio_bitrate, crf, preset, tune, profile, container, output_dir, delete_source, keep_original_if_larger, keep_extra_streams, created_at, updated_at`
 
-const jobSelectCols = `id, file_path, media_type, status, priority, original_size, target_resolution, ffmpeg_flags, error_message, video_codec, audio_codec, audio_bitrate, crf, preset, tune, profile, container, output_dir, delete_source, keep_original_if_larger, keep_extra_streams, force, created_at, updated_at`
+const jobSelectCols = `id, file_path, media_type, status, priority, original_size, target_resolution, ffmpeg_flags, error_message, video_codec, audio_codec, audio_bitrate, crf, preset, tune, profile, container, output_dir, delete_source, keep_original_if_larger, keep_extra_streams, force_encode, created_at, updated_at`
 
 const reportSelectCols = `id, file_path, media_type, status, original_size, encoded_size, size_saved, processing_time, target_resolution, ffmpeg_flags, error_message, video_codec, audio_codec, audio_bitrate, crf, preset, tune, profile, container, output_dir, delete_source, keep_original_if_larger, keep_extra_streams, ffmpeg_command, created_at`
 
@@ -306,7 +306,7 @@ func AddJob(j Job) error {
 	args := []interface{}{j.FilePath, j.MediaType, j.Priority, nullStr(j.TargetResolution), nullStr(j.FFmpegFlags), j.OriginalSize}
 	args = append(args, encodeInsertArgs(j.EncodeSettings)...)
 	args = append(args, j.Force)
-	_, err := DB.Exec(`INSERT INTO jobs (file_path, media_type, priority, target_resolution, ffmpeg_flags, original_size, video_codec, audio_codec, audio_bitrate, crf, preset, tune, profile, container, output_dir, delete_source, keep_original_if_larger, keep_extra_streams, force) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`, args...)
+	_, err := DB.Exec(`INSERT INTO jobs (file_path, media_type, priority, target_resolution, ffmpeg_flags, original_size, video_codec, audio_codec, audio_bitrate, crf, preset, tune, profile, container, output_dir, delete_source, keep_original_if_larger, keep_extra_streams, force_encode) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`, args...)
 	return err
 }
 

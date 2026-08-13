@@ -112,7 +112,10 @@ func runMigrations() error {
 	if err := ensureEncodeSettingsColumns(); err != nil {
 		return err
 	}
-	if err := ensureColumn("jobs", "force", "BOOLEAN NOT NULL DEFAULT FALSE"); err != nil {
+	if err := renameColumnIfExists("jobs", "force", "force_encode"); err != nil {
+		return err
+	}
+	if err := ensureColumn("jobs", "force_encode", "BOOLEAN NOT NULL DEFAULT FALSE"); err != nil {
 		return err
 	}
 	if err := ensureColumn("job_reports", "ffmpeg_command", "TEXT"); err != nil {
@@ -209,6 +212,34 @@ func ensureColumn(table, name, definition string) error {
 		return fmt.Errorf("migration failed: add %s.%s: %w", table, name, err)
 	}
 	log.Printf("Migrated %s: added %s", table, name)
+	return nil
+}
+
+func renameColumnIfExists(table, oldName, newName string) error {
+	hasOld, err := columnExists(table, oldName)
+	if err != nil {
+		return fmt.Errorf("migration failed: check %s.%s: %w", table, oldName, err)
+	}
+	if !hasOld {
+		return nil
+	}
+	hasNew, err := columnExists(table, newName)
+	if err != nil {
+		return fmt.Errorf("migration failed: check %s.%s: %w", table, newName, err)
+	}
+	if hasNew {
+		return nil
+	}
+	var stmt string
+	if usingSQLite() {
+		stmt = fmt.Sprintf("ALTER TABLE `%s` RENAME COLUMN `%s` TO `%s`", table, oldName, newName)
+	} else {
+		stmt = fmt.Sprintf("ALTER TABLE `%s` CHANGE COLUMN `%s` `%s` BOOLEAN NOT NULL DEFAULT FALSE", table, oldName, newName)
+	}
+	if _, err := DB.Exec(stmt); err != nil {
+		return fmt.Errorf("migration failed: rename %s.%s to %s: %w", table, oldName, newName, err)
+	}
+	log.Printf("Migrated %s: renamed %s to %s", table, oldName, newName)
 	return nil
 }
 

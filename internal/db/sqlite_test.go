@@ -47,6 +47,7 @@ func TestSQLiteFolderJobReportRoundTrip(t *testing.T) {
 	}
 
 	job := folders[0].NewJob("/media/movies/Film.mkv", 1000, 1)
+	job.Force = true
 	if err := AddJob(job); err != nil {
 		t.Fatal(err)
 	}
@@ -58,6 +59,9 @@ func TestSQLiteFolderJobReportRoundTrip(t *testing.T) {
 	jobs, err := GetPendingJobs()
 	if err != nil || len(jobs) != 1 {
 		t.Fatalf("pending = %+v err=%v", jobs, err)
+	}
+	if !jobs[0].Force {
+		t.Fatal("expected force_encode to round-trip")
 	}
 	claimed, err := ClaimJob(jobs[0].ID)
 	if err != nil || !claimed {

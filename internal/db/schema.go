@@ -45,7 +45,7 @@ var mysqlCreateTables = []string{
 			delete_source BOOLEAN NOT NULL DEFAULT FALSE,
 			keep_original_if_larger BOOLEAN NOT NULL DEFAULT FALSE,
 			keep_extra_streams BOOLEAN NOT NULL DEFAULT TRUE,
-			force BOOLEAN NOT NULL DEFAULT FALSE,
+			force_encode BOOLEAN NOT NULL DEFAULT FALSE,
 			created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
 			updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
 		)`,
@@ -127,7 +127,7 @@ var sqliteCreateTables = []string{
 			delete_source INTEGER NOT NULL DEFAULT 0,
 			keep_original_if_larger INTEGER NOT NULL DEFAULT 0,
 			keep_extra_streams INTEGER NOT NULL DEFAULT 1,
-			force INTEGER NOT NULL DEFAULT 0,
+			force_encode INTEGER NOT NULL DEFAULT 0,
 			created_at DATETIME NOT NULL DEFAULT (datetime('now')),
 			updated_at DATETIME NOT NULL DEFAULT (datetime('now'))
 		)`,
