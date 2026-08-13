@@ -264,6 +264,72 @@ tbody tr.folder-disabled {
 	transition: width 0.3s ease;
 }
 
+.btn-pause {
+	background: transparent;
+	color: var(--warning);
+	border: 1px solid var(--warning);
+	min-width: 8.5rem;
+	padding: 0.55rem 1.25rem;
+	font-size: 1rem;
+}
+
+.btn-pause:hover {
+	background: rgba(245, 158, 11, 0.12);
+	border-color: var(--warning);
+	box-shadow: none;
+}
+
+.btn-resume {
+	min-width: 8.5rem;
+	padding: 0.55rem 1.25rem;
+	font-size: 1rem;
+}
+
+.queue-header {
+	display: flex;
+	justify-content: space-between;
+	align-items: center;
+	flex-wrap: wrap;
+	gap: 1rem;
+	margin-bottom: 1rem;
+}
+
+.queue-controls {
+	display: flex;
+	align-items: center;
+	flex-wrap: wrap;
+	gap: 0.5rem;
+}
+
+.queue-window-label {
+	display: flex;
+	align-items: center;
+	gap: 0.4rem;
+	color: var(--text-secondary);
+	font-size: 0.875rem;
+}
+
+.queue-window-sep {
+	color: var(--text-secondary);
+	font-size: 0.875rem;
+}
+
+.queue-controls .form-control.queue-time {
+	width: auto;
+	padding: 0.35rem 0.5rem;
+	font-size: 0.875rem;
+}
+
+.queue-banner {
+	padding: 0.75rem 1rem;
+	border-radius: 4px;
+	margin-bottom: 1rem;
+	background: rgba(245, 158, 11, 0.1);
+	border: 1px solid rgba(245, 158, 11, 0.35);
+	color: var(--warning);
+	font-size: 0.875rem;
+}
+
 /* Forms */
 .form-group {
 	margin-bottom: 1rem;

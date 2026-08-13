@@ -74,6 +74,9 @@ func (m *Manager) processNextJob() {
 	if m.isShuttingDown() {
 		return
 	}
+	if !m.Allowed() {
+		return
+	}
 
 	var jobID int
 	var hasJobs bool

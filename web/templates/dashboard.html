@@ -15,7 +15,20 @@
 </div>
 
 <div class="card">
-    <h2>Active Job Queue</h2>
+    <div class="queue-header">
+        <h2 style="margin: 0;">Active Job Queue</h2>
+        <div class="queue-controls">
+            <label class="queue-window-label">Encode
+                <input type="time" id="window-start" class="form-control queue-time" title="Window start">
+            </label>
+            <span class="queue-window-sep">to</span>
+            <input type="time" id="window-end" class="form-control queue-time" title="Window end">
+            <button type="button" class="btn btn-sm btn-outline" onclick="saveWindow()">Save window</button>
+            <button type="button" class="btn btn-sm btn-outline" onclick="clearWindow()">Any time</button>
+            <button type="button" class="btn btn-pause" id="pause-btn" onclick="togglePause()">Pause</button>
+        </div>
+    </div>
+    <div id="queue-banner" class="queue-banner" hidden></div>
     <div class="table-container">
         <table>
             <thead>
@@ -55,6 +68,85 @@
     let currentPage = 1;
     let currentLimit = 10;
     const processingStartTimes = new Map();
+    let schedule = { paused: false, window_start: '', window_end: '', allowed: true, reason: '', timezone: '' };
+
+    function applySchedule(s) {
+        if (!s) return;
+        schedule = s;
+        document.getElementById('window-start').value = s.window_start || '';
+        document.getElementById('window-end').value = s.window_end || '';
+
+        const btn = document.getElementById('pause-btn');
+        if (s.paused) {
+            btn.textContent = 'Resume';
+            btn.className = 'btn btn-resume';
+        } else {
+            btn.textContent = 'Pause';
+            btn.className = 'btn btn-pause';
+        }
+
+        const banner = document.getElementById('queue-banner');
+        if (s.paused) {
+            banner.hidden = false;
+            banner.textContent = 'Queue paused. Current encodes will finish; no new jobs will start until you resume.';
+        } else if (s.reason === 'outside_window') {
+            banner.hidden = false;
+            const tz = s.timezone ? ' (' + s.timezone + ')' : '';
+            banner.textContent = 'Outside encode window (' + s.window_start + '–' + s.window_end + tz + '). Waiting. Current encodes will finish.';
+        } else {
+            banner.hidden = true;
+            banner.textContent = '';
+        }
+    }
+
+    async function loadSchedule() {
+        const res = await fetch('/api/queue/schedule');
+        if (!res.ok) return;
+        applySchedule(await res.json());
+    }
+
+    async function togglePause() {
+        const res = await fetch('/api/queue/pause', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ paused: !schedule.paused })
+        });
+        if (!res.ok) {
+            alert('Failed to update pause: ' + await res.text());
+            return;
+        }
+        applySchedule(await res.json());
+    }
+
+    async function saveWindow() {
+        const start = document.getElementById('window-start').value;
+        const end = document.getElementById('window-end').value;
+        const res = await fetch('/api/queue/window', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ start, end })
+        });
+        if (!res.ok) {
+            alert('Failed to save window: ' + await res.text());
+            return;
+        }
+        applySchedule(await res.json());
+    }
+
+    async function clearWindow() {
+        document.getElementById('window-start').value = '';
+        document.getElementById('window-end').value = '';
+        const res = await fetch('/api/queue/window', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ start: '', end: '' })
+        });
+        if (!res.ok) {
+            alert('Failed to clear window: ' + await res.text());
+            return;
+        }
+        applySchedule(await res.json());
+    }
 
     function formatElapsed(ms) {
         const totalSecs = Math.floor(ms / 1000);
@@ -212,6 +304,9 @@
         loadQueue();
     });
     window.sse.addEventListener('job_added', () => loadQueue());
+    window.sse.addEventListener('queue_schedule', (e) => {
+        applySchedule(JSON.parse(e.data));
+    });
 
     window.sse.addEventListener('progress', (e) => {
         const data = JSON.parse(e.data);
@@ -236,6 +331,7 @@
     }, 1000);
 
     // Initial load
+    loadSchedule();
     loadQueue();
 </script>
 {{end}}

@@ -6,6 +6,7 @@ import (
 	"os"
 	"os/signal"
 	"syscall"
+	"time"
 
 	"goencode/internal/config"
 	"goencode/internal/db"
@@ -41,7 +42,16 @@ func main() {
 	// Initialize logger
 	logger.Init(sseServer.Broadcast)
 
-	qm := queue.NewManager(cfg.Encoder.FFmpegPath, cfg.Encoder.TempDir, cfg.Notifications.WebhookURL, cfg.Encoder.Workers, sseServer.Broadcast)
+	loc := time.Local
+	if cfg.Server.TimeZone != "" {
+		if loaded, err := time.LoadLocation(cfg.Server.TimeZone); err != nil {
+			log.Printf("Invalid timezone %q, using local: %v", cfg.Server.TimeZone, err)
+		} else {
+			loc = loaded
+		}
+	}
+
+	qm := queue.NewManager(cfg.Encoder.FFmpegPath, cfg.Encoder.TempDir, cfg.Notifications.WebhookURL, cfg.Encoder.Workers, loc, sseServer.Broadcast)
 	qm.Start()
 	defer qm.Stop()
 

@@ -131,6 +131,9 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("/api/sse", s.sse.HandleSSE)
 
 	s.mux.HandleFunc("/api/queue", s.handleGetQueue)
+	s.mux.HandleFunc("/api/queue/schedule", s.handleQueueSchedule)
+	s.mux.HandleFunc("/api/queue/pause", s.handleQueuePause)
+	s.mux.HandleFunc("/api/queue/window", s.handleQueueWindow)
 	s.mux.HandleFunc("/api/status", s.handleStatus)
 	s.mux.HandleFunc("/api/jobs/bump/", s.handleBumpJob)
 	s.mux.HandleFunc("/api/jobs/cancel/", s.handleCancelJob)
@@ -194,6 +197,7 @@ func (s *Server) handleStatus(w http.ResponseWriter, r *http.Request) {
 			"queue_length":          stats.QueueLength,
 		},
 		"current_job": processingJob,
+		"schedule":    s.qm.ScheduleState(),
 	}
 
 	json.NewEncoder(w).Encode(response)

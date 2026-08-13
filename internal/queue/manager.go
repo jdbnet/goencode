@@ -2,9 +2,11 @@ package queue
 
 import (
 	"context"
+	"fmt"
 	"log"
 	"os"
 	"os/exec"
+	"strings"
 	"sync"
 	"time"
 
@@ -36,6 +38,10 @@ type Manager struct {
 	shuttingDown bool
 	doneChan     chan struct{}
 	stopOnce     sync.Once
+	loc          *time.Location
+	paused       bool
+	windowStart  string
+	windowEnd    string
 }
 
 func clampWorkers(n int) int {
@@ -48,7 +54,10 @@ func clampWorkers(n int) int {
 	return n
 }
 
-func NewManager(ffmpegPath, tempDir, webhookURL string, workers int, broadcast func(string, interface{})) *Manager {
+func NewManager(ffmpegPath, tempDir, webhookURL string, workers int, loc *time.Location, broadcast func(string, interface{})) *Manager {
+	if loc == nil {
+		loc = time.Local
+	}
 	return &Manager{
 		FFmpegPath:  ffmpegPath,
 		TempDir:     tempDir,
@@ -60,6 +69,7 @@ func NewManager(ffmpegPath, tempDir, webhookURL string, workers int, broadcast f
 		encoder:     encoder.NewManager(ffmpegPath),
 		active:      make(map[int]*activeJob),
 		doneChan:    make(chan struct{}),
+		loc:         loc,
 	}
 }
 
@@ -68,7 +78,11 @@ func (m *Manager) Start() {
 		log.Printf("Failed to mark interrupted jobs: %v", err)
 	}
 
+	m.loadSchedule()
 	log.Printf("Queue started with %d encode worker(s)", m.Workers)
+	if st := m.ScheduleState(); !st.Allowed {
+		log.Printf("Queue idle: %s", st.Reason)
+	}
 
 	var wg sync.WaitGroup
 	for i := 0; i < m.Workers; i++ {
@@ -82,6 +96,7 @@ func (m *Manager) Start() {
 		wg.Wait()
 		close(m.doneChan)
 	}()
+	go m.scheduleLoop()
 	m.Trigger()
 }
 
@@ -214,4 +229,132 @@ func (m *Manager) isShuttingDown() bool {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	return m.shuttingDown
+}
+
+func (m *Manager) loadSchedule() {
+	pausedVal, err := db.GetAppConfig(configQueuePaused)
+	if err != nil {
+		log.Printf("Failed to load pause state: %v", err)
+	}
+	start, err := db.GetAppConfig(configWindowStart)
+	if err != nil {
+		log.Printf("Failed to load encode window start: %v", err)
+	}
+	end, err := db.GetAppConfig(configWindowEnd)
+	if err != nil {
+		log.Printf("Failed to load encode window end: %v", err)
+	}
+
+	m.mu.Lock()
+	m.paused = pausedVal == "1" || strings.EqualFold(pausedVal, "true")
+	m.windowStart = start
+	m.windowEnd = end
+	m.mu.Unlock()
+}
+
+func (m *Manager) Allowed() bool {
+	st := m.ScheduleState()
+	return st.Allowed
+}
+
+func (m *Manager) ScheduleState() ScheduleState {
+	m.mu.Lock()
+	paused := m.paused
+	start := m.windowStart
+	end := m.windowEnd
+	loc := m.loc
+	m.mu.Unlock()
+
+	now := time.Now().In(loc)
+	inWindow := inEncodeWindow(now, start, end)
+	st := ScheduleState{
+		Paused:      paused,
+		WindowStart: start,
+		WindowEnd:   end,
+		InWindow:    inWindow,
+		Timezone:    loc.String(),
+		Allowed:     !paused && inWindow,
+	}
+	if paused {
+		st.Reason = "paused"
+	} else if !inWindow {
+		st.Reason = "outside_window"
+	}
+	return st
+}
+
+func (m *Manager) SetPaused(paused bool) error {
+	val := "0"
+	if paused {
+		val = "1"
+	}
+	if err := db.SetAppConfig(configQueuePaused, val); err != nil {
+		return err
+	}
+	m.mu.Lock()
+	m.paused = paused
+	m.mu.Unlock()
+	if paused {
+		log.Printf("Queue paused")
+	} else {
+		log.Printf("Queue resumed")
+		m.Trigger()
+	}
+	m.NotifySSE("queue_schedule", m.ScheduleState())
+	return nil
+}
+
+func (m *Manager) SetWindow(start, end string) error {
+	start, err := normalizeClock(start)
+	if err != nil {
+		return err
+	}
+	end, err = normalizeClock(end)
+	if err != nil {
+		return err
+	}
+	if (start == "") != (end == "") {
+		return fmt.Errorf("set both window start and end, or clear both")
+	}
+	if err := db.SetAppConfig(configWindowStart, start); err != nil {
+		return err
+	}
+	if err := db.SetAppConfig(configWindowEnd, end); err != nil {
+		return err
+	}
+	m.mu.Lock()
+	m.windowStart = start
+	m.windowEnd = end
+	m.mu.Unlock()
+	if start == "" {
+		log.Printf("Encode window cleared")
+	} else {
+		log.Printf("Encode window set to %s-%s (%s)", start, end, m.loc)
+	}
+	m.Trigger()
+	m.NotifySSE("queue_schedule", m.ScheduleState())
+	return nil
+}
+
+func (m *Manager) scheduleLoop() {
+	ticker := time.NewTicker(30 * time.Second)
+	defer ticker.Stop()
+	prev := m.Allowed()
+	for {
+		select {
+		case <-m.StopChan:
+			return
+		case <-ticker.C:
+			now := m.Allowed()
+			if now && !prev {
+				log.Printf("Encode window open, starting queue")
+				m.Trigger()
+				m.NotifySSE("queue_schedule", m.ScheduleState())
+			} else if !now && prev {
+				log.Printf("Encode window closed, not starting new jobs")
+				m.NotifySSE("queue_schedule", m.ScheduleState())
+			}
+			prev = now
+		}
+	}
 }
