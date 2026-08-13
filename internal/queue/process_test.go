@@ -82,4 +82,8 @@ func TestNewManagerClampsWorkers(t *testing.T) {
 	if m.Workers != 8 {
 		t.Fatalf("Workers = %d, want 8", m.Workers)
 	}
+	m.SetThreads(4)
+	if m.Threads != 4 || m.encoder.Threads != 4 {
+		t.Fatalf("Threads = %d encoder=%d, want 4", m.Threads, m.encoder.Threads)
+	}
 }

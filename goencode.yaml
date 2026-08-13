@@ -21,6 +21,7 @@ encoder:
   ffmpeg_path: "ffmpeg"
   temp_dir: "/tmp/goencode"
   workers: 1
+  threads: 0
   min_free_gb: 5
 
 logging:

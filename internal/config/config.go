@@ -52,6 +52,16 @@ func clampWorkers(n int) int {
 	return n
 }
 
+func clampThreads(n int) int {
+	if n < 0 {
+		return 0
+	}
+	if n > 256 {
+		return 256
+	}
+	return n
+}
+
 type ServerConfig struct {
 	Port       int    `yaml:"port"`
 	ListenAddr string `yaml:"listen_addr"`
@@ -76,6 +86,7 @@ type EncoderConfig struct {
 	FFmpegPath string `yaml:"ffmpeg_path"`
 	TempDir    string `yaml:"temp_dir"`
 	Workers    int    `yaml:"workers"`
+	Threads    int    `yaml:"threads"`
 	MinFreeGB  int    `yaml:"min_free_gb"`
 }
 
@@ -145,6 +156,7 @@ func LoadConfig(path string) (*Config, error) {
 	cfg.Encoder.FFmpegPath = getEnvStr("GOENCODE_FFMPEG_PATH", cfg.Encoder.FFmpegPath)
 	cfg.Encoder.TempDir = getEnvStr("GOENCODE_ENCODER_TEMP", cfg.Encoder.TempDir)
 	cfg.Encoder.Workers = getEnvInt("GOENCODE_ENCODER_WORKERS", cfg.Encoder.Workers)
+	cfg.Encoder.Threads = getEnvInt("GOENCODE_ENCODER_THREADS", cfg.Encoder.Threads)
 	cfg.Encoder.MinFreeGB = getEnvInt("GOENCODE_ENCODER_MIN_FREE_GB", cfg.Encoder.MinFreeGB)
 	cfg.Logging.Level = getEnvStr("GOENCODE_LOG_LEVEL", cfg.Logging.Level)
 	cfg.Notifications.WebhookURL = getEnvStr("GOENCODE_WEBHOOK_URL", cfg.Notifications.WebhookURL)
@@ -183,6 +195,7 @@ func LoadConfig(path string) (*Config, error) {
 		cfg.Encoder.TempDir = "/tmp/goencode"
 	}
 	cfg.Encoder.Workers = clampWorkers(cfg.Encoder.Workers)
+	cfg.Encoder.Threads = clampThreads(cfg.Encoder.Threads)
 	if cfg.Encoder.MinFreeGB <= 0 {
 		cfg.Encoder.MinFreeGB = 5
 	}

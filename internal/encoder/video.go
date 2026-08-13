@@ -15,20 +15,49 @@ type VideoEncodeOptions struct {
 	AudioBitrate                  string
 	OriginalWidth, OriginalHeight int
 	KeepExtraStreams              bool
+	Threads                       int
 }
 
 func (m *FFmpegManager) BuildVideoCmd(inputPath, outputPath string, opt VideoEncodeOptions) (*exec.Cmd, error) {
+	if m != nil && opt.Threads == 0 {
+		opt.Threads = m.Threads
+	}
 	args := buildVideoArgs(inputPath, outputPath, opt)
 	return exec.Command(m.BinaryPath, args...), nil
 }
 
 func hasMapFlag(flags string) bool {
+	return hasFlagToken(flags, "-map")
+}
+
+func hasFlagToken(flags, token string) bool {
 	for _, tok := range ShlexSplit(flags) {
-		if tok == "-map" || strings.HasPrefix(tok, "-map=") {
+		if tok == token || strings.HasPrefix(tok, token+"=") {
 			return true
 		}
 	}
 	return false
+}
+
+func threadFlags(codec string, threads int, customFlags string) []string {
+	if threads <= 0 {
+		return nil
+	}
+	var args []string
+	if !hasFlagToken(customFlags, "-threads") {
+		args = append(args, "-threads", strconv.Itoa(threads))
+	}
+	switch codec {
+	case "libx265":
+		if !hasFlagToken(customFlags, "-x265-params") {
+			args = append(args, "-x265-params", fmt.Sprintf("pools=%d", threads))
+		}
+	case "libsvtav1":
+		if !hasFlagToken(customFlags, "-svtav1-params") {
+			args = append(args, "-svtav1-params", fmt.Sprintf("lp=%d", threads))
+		}
+	}
+	return args
 }
 
 func extraStreamArgs(container, customFlags string, keep bool) []string {
@@ -114,6 +143,8 @@ func buildVideoArgs(inputPath, outputPath string, opt VideoEncodeOptions) []stri
 	} else {
 		args = append(args, "-f", "matroska")
 	}
+
+	args = append(args, threadFlags(codec, opt.Threads, opt.CustomFlags)...)
 
 	if opt.CustomFlags != "" {
 		args = append(args, ShlexSplit(opt.CustomFlags)...)

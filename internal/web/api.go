@@ -457,7 +457,9 @@ func (s *Server) handleFFmpegPreview(w http.ResponseWriter, r *http.Request) {
 		note = "Scale filter assumes a 3840x2160 source. Actual encodes use the file's resolution."
 	}
 
-	cmd := encoder.NewManager(s.qm.FFmpegPath).PreviewCommand(f.MediaType, input, output, opt)
+	m := encoder.NewManager(s.qm.FFmpegPath)
+	m.Threads = s.qm.Threads
+	cmd := m.PreviewCommand(f.MediaType, input, output, opt)
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]string{
 		"command": cmd,

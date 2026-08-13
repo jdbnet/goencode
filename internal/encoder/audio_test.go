@@ -79,3 +79,11 @@ func TestAudioSkipSameCodec(t *testing.T) {
 		t.Fatal("aac should not skip when targeting mp3")
 	}
 }
+
+func TestBuildAudioArgsThreads(t *testing.T) {
+	args := buildAudioArgs("in.flac", "out.mp3", AudioEncodeOptions{Threads: 2})
+	joined := strings.Join(args, " ")
+	if !strings.Contains(joined, "-threads 2") {
+		t.Errorf("expected -threads 2, got %s", joined)
+	}
+}

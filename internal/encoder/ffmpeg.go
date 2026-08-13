@@ -13,6 +13,7 @@ import (
 // FFmpegManager handles execution and probing
 type FFmpegManager struct {
 	BinaryPath string
+	Threads    int
 }
 
 func NewManager(binaryPath string) *FFmpegManager {

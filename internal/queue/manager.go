@@ -28,6 +28,7 @@ type Manager struct {
 	FFmpegPath   string
 	TempDir      string
 	Workers      int
+	Threads      int
 	TriggerChan  chan struct{}
 	StopChan     chan struct{}
 	Broadcast    func(string, interface{})
@@ -72,6 +73,16 @@ func NewManager(ffmpegPath, tempDir string, workers int, loc *time.Location, bro
 		active:       make(map[int]*activeJob),
 		doneChan:     make(chan struct{}),
 		loc:          loc,
+	}
+}
+
+func (m *Manager) SetThreads(n int) {
+	if n < 0 {
+		n = 0
+	}
+	m.Threads = n
+	if m.encoder != nil {
+		m.encoder.Threads = n
 	}
 }
 

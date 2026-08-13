@@ -9,9 +9,13 @@ import (
 
 type AudioEncodeOptions struct {
 	Codec, Bitrate, Container, CustomFlags string
+	Threads                                int
 }
 
 func (m *FFmpegManager) BuildAudioCmd(inputPath, outputPath string, opt AudioEncodeOptions) (*exec.Cmd, error) {
+	if m != nil && opt.Threads == 0 {
+		opt.Threads = m.Threads
+	}
 	return exec.Command(m.BinaryPath, buildAudioArgs(inputPath, outputPath, opt)...), nil
 }
 
@@ -39,6 +43,8 @@ func buildAudioArgs(inputPath, outputPath string, opt AudioEncodeOptions) []stri
 	if f := audioMuxer(opt.Container); f != "" {
 		args = append(args, "-f", f)
 	}
+
+	args = append(args, threadFlags(opt.Codec, opt.Threads, opt.CustomFlags)...)
 
 	if opt.CustomFlags != "" {
 		args = append(args, ShlexSplit(opt.CustomFlags)...)

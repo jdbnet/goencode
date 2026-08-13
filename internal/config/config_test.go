@@ -72,6 +72,38 @@ func TestEncoderWorkersDefault(t *testing.T) {
 	if cfg.Encoder.MinFreeGB != 5 {
 		t.Fatalf("MinFreeGB = %d, want 5", cfg.Encoder.MinFreeGB)
 	}
+	if cfg.Encoder.Threads != 0 {
+		t.Fatalf("Threads = %d, want 0", cfg.Encoder.Threads)
+	}
+}
+
+func TestEncoderThreadsEnvAndClamp(t *testing.T) {
+	t.Setenv("GOENCODE_ENCODER_THREADS", "4")
+	cfg, err := LoadConfig("does-not-exist.yaml")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.Encoder.Threads != 4 {
+		t.Fatalf("Threads = %d, want 4", cfg.Encoder.Threads)
+	}
+
+	t.Setenv("GOENCODE_ENCODER_THREADS", "999")
+	cfg, err = LoadConfig("does-not-exist.yaml")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.Encoder.Threads != 256 {
+		t.Fatalf("Threads = %d, want 256", cfg.Encoder.Threads)
+	}
+
+	t.Setenv("GOENCODE_ENCODER_THREADS", "-2")
+	cfg, err = LoadConfig("does-not-exist.yaml")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.Encoder.Threads != 0 {
+		t.Fatalf("Threads = %d, want 0", cfg.Encoder.Threads)
+	}
 }
 
 func TestNotifyEventsEnv(t *testing.T) {

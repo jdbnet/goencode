@@ -53,6 +53,7 @@ func main() {
 	}
 
 	qm := queue.NewManager(cfg.Encoder.FFmpegPath, cfg.Encoder.TempDir, cfg.Encoder.Workers, loc, sseServer.Broadcast)
+	qm.SetThreads(cfg.Encoder.Threads)
 	qm.Notifier = notify.New(notify.Options{
 		Events:         cfg.Notifications.Events,
 		WebhookURL:     cfg.Notifications.WebhookURL,

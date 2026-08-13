@@ -48,8 +48,8 @@ func TestBuildVideoArgsDefaults(t *testing.T) {
 	if !strings.Contains(joined, "-f matroska") {
 		t.Errorf("expected matroska, got %s", joined)
 	}
-	if !strings.Contains(joined, "-map 0") || !strings.Contains(joined, "-c:s copy") || !strings.Contains(joined, "-c:t copy") {
-		t.Errorf("expected map all streams, got %s", joined)
+	if strings.Contains(joined, "-threads") {
+		t.Errorf("default should not set threads, got %s", joined)
 	}
 }
 
@@ -196,5 +196,47 @@ func TestPreviewCommandScaleAssumesSource(t *testing.T) {
 	})
 	if !strings.Contains(cmd, "scale=1920:1080") {
 		t.Errorf("expected 4k-to-1080 scale, got %s", cmd)
+	}
+}
+
+func TestBuildVideoArgsThreadsX265(t *testing.T) {
+	args := buildVideoArgs("in.mkv", "out.mkv", VideoEncodeOptions{Threads: 4})
+	joined := strings.Join(args, " ")
+	if !strings.Contains(joined, "-threads 4") {
+		t.Errorf("expected -threads 4, got %s", joined)
+	}
+	if !strings.Contains(joined, "-x265-params pools=4") {
+		t.Errorf("expected x265 pools, got %s", joined)
+	}
+}
+
+func TestBuildVideoArgsThreadsSVTAV1(t *testing.T) {
+	args := buildVideoArgs("in.mkv", "out.mkv", VideoEncodeOptions{VideoCodec: "libsvtav1", Threads: 2})
+	joined := strings.Join(args, " ")
+	if !strings.Contains(joined, "-threads 2") || !strings.Contains(joined, "-svtav1-params lp=2") {
+		t.Errorf("got %s", joined)
+	}
+}
+
+func TestBuildVideoArgsThreadsSkippedWhenCustom(t *testing.T) {
+	args := buildVideoArgs("in.mkv", "out.mkv", VideoEncodeOptions{
+		Threads:     4,
+		CustomFlags: "-threads 8 -x265-params pools=8",
+	})
+	joined := strings.Join(args, " ")
+	if strings.Count(joined, "-threads") != 1 || !strings.Contains(joined, "-threads 8") {
+		t.Errorf("custom -threads should win, got %s", joined)
+	}
+	if strings.Count(joined, "-x265-params") != 1 {
+		t.Errorf("custom x265-params should win, got %s", joined)
+	}
+}
+
+func TestPreviewCommandUsesManagerThreads(t *testing.T) {
+	m := NewManager("ffmpeg")
+	m.Threads = 3
+	cmd := m.PreviewCommand("video", "input.mkv", "output.mkv", VideoEncodeOptions{})
+	if !strings.Contains(cmd, "-threads 3") || !strings.Contains(cmd, "pools=3") {
+		t.Errorf("preview should include manager threads, got %s", cmd)
 	}
 }
