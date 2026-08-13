@@ -180,17 +180,14 @@ func scanReportTotals(t *ReportTotals, where string, args []interface{}) error {
 }
 
 func queryReportBuckets(where string, args []interface{}, monthly bool) ([]ReportBucket, error) {
-	bucketFmt := "%Y-%m-%d"
-	if monthly {
-		bucketFmt = "%Y-%m-01"
-	}
+	bucket := dateBucketSQL(monthly)
 	rows, err := DB.Query(`
-		SELECT DATE_FORMAT(created_at, '`+bucketFmt+`') AS bucket,
+		SELECT `+bucket+` AS bucket,
 			COUNT(*),
 			COALESCE(SUM(CASE WHEN status = 'success' THEN 1 ELSE 0 END), 0),
 			COALESCE(SUM(CASE WHEN status = 'success' THEN size_saved ELSE 0 END), 0)
 		FROM job_reports WHERE `+where+`
-		GROUP BY DATE_FORMAT(created_at, '`+bucketFmt+`') ORDER BY bucket ASC`, args...)
+		GROUP BY `+bucket+` ORDER BY bucket ASC`, args...)
 	if err != nil {
 		return nil, err
 	}

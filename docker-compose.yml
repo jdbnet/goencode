@@ -15,9 +15,16 @@ services:
     restart: always
     ports:
       - "8080:8080"
+    environment:
+      - GOENCODE_DB_DRIVER=mysql
+      - GOENCODE_DB_HOST=db
+      - GOENCODE_DB_PORT=3306
+      - GOENCODE_DB_USER=root
+      - GOENCODE_DB_PASS=root
+      - GOENCODE_DB_NAME=encoder
     volumes:
       - ./goencode.yaml:/etc/goencode/config.yaml:ro
-      - ./media:/media # Mount your media folder here
+      - ./media:/media
     depends_on:
       - db
 

@@ -3,7 +3,7 @@
 
 # GoEncode
 
-GoEncode is a lightweight, high-performance media transcoding server written in Go. Originally built as a Flask app, it has been rewritten from the ground up as a single, self-contained binary. GoEncode features a modern web UI, a robust job queue, automatic watch folder monitoring, real-time log streaming, and MariaDB-backed persistence.
+GoEncode is a lightweight, high-performance media transcoding server written in Go. Originally built as a Flask app, it has been rewritten from the ground up as a single, self-contained binary. GoEncode features a modern web UI, a robust job queue, automatic watch folder monitoring, real-time log streaming, and SQLite by default (MariaDB optional).
 
 </div>
 
@@ -14,7 +14,7 @@ GoEncode is a lightweight, high-performance media transcoding server written in 
 - **Background Processing**: Encodes jobs concurrently with a configurable worker pool (default 1, max 16). Files are copied to a temporary directory before encoding to avoid hammering network-attached storage (NAS).
 - **Format Intelligence**: Probes media to detect codecs and resolution, automatically skipping files that already meet the target codec/resolution.
 - **Web Dashboard**: Modern, responsive interface with Server-Sent Events (SSE) for live tracking of job progress, queue stats, and server logs.
-- **Robust Persistence**: Job history, metrics (size saved, time taken), and configuration are all saved to a MariaDB/MySQL database.
+- **SQLite by default**: Run the binary with no database server. MariaDB/MySQL is still available for larger installs.
 - **Notifications**: Optional ntfy, Discord, Gotify, or generic JSON webhooks on encode success, skip, and failure. Success messages include size saved so you can see when a job actually paid off.
 - **Docker-Ready**: Packaged in an ultra-slim container image based on Debian, with `ffmpeg` built-in.
 
@@ -37,6 +37,7 @@ services:
     ports:
       - "8080:8080"
     environment:
+      - GOENCODE_DB_DRIVER=mysql
       - GOENCODE_DB_HOST=db
       - GOENCODE_DB_PORT=3306
       - GOENCODE_DB_USER=goencode
@@ -83,9 +84,11 @@ volumes:
 
 We also build the binary for Linux AMD64 which you can download from [https://apps.jdbnet.co.uk/goencode](https://apps.jdbnet.co.uk/goencode)
 
-You'll need to make sure ```ffmpeg``` and ```gzip``` are available on your system
+You'll need to make sure ```ffmpeg``` and ```gzip``` are available on your system.
 
-You'll also need to create the config file at ```/etc/goencode/goencode.yaml```. You can copy and edit the example [here](goencode.yaml)
+No database server is required. SQLite is the default and stores data in `goencode.db` in the working directory. Copy the example [goencode.yaml](goencode.yaml) if you want a config file, or pass `--config` / environment variables.
+
+For MariaDB, set `GOENCODE_DB_DRIVER=mysql` (or `database.driver: mysql`) plus host, user, and password.
 
 The binary checks for updates on startup and replaces itself when a newer release is available. Pass `--no-update` or set `GOENCODE_NO_UPDATE=1` to disable this. Docker images do not self-update; pull a new image instead.
 
@@ -97,7 +100,9 @@ GoEncode can be configured via `goencode.yaml` or entirely via environment varia
 
 | Variable | Description | Default |
 |----------|-------------|---------|
-| `GOENCODE_DB_HOST` | Database host | `127.0.0.1` |
+| `GOENCODE_DB_DRIVER` | `sqlite` or `mysql` (`mariadb` is accepted). Unset: sqlite if no host, mysql if `GOENCODE_DB_HOST` is set | `sqlite` |
+| `GOENCODE_DB_PATH` | SQLite file path | `goencode.db` |
+| `GOENCODE_DB_HOST` | MariaDB/MySQL host. If set and driver is unset, selects mysql | |
 | `GOENCODE_DB_PORT` | Database port | `3306` |
 | `GOENCODE_DB_USER` | Database username | `goencode` |
 | `GOENCODE_DB_PASS` | Database password | |

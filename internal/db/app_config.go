@@ -18,8 +18,6 @@ func GetAppConfig(key string) (string, error) {
 }
 
 func SetAppConfig(key, value string) error {
-	_, err := DB.Exec(`
-		INSERT INTO app_config (config_key, config_value) VALUES (?, ?)
-		ON DUPLICATE KEY UPDATE config_value = VALUES(config_value)`, key, value)
+	_, err := DB.Exec(upsertAppConfigSQL(), key, value)
 	return err
 }

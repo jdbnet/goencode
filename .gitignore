@@ -1,2 +1,5 @@
 media/
 goencode
+goencode.db
+goencode.db-wal
+goencode.db-shm

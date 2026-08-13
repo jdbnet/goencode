@@ -4,120 +4,102 @@ import (
 	"database/sql"
 	"fmt"
 	"log"
+	"os"
+	"path/filepath"
 	"regexp"
 	"strings"
 	"time"
 
 	_ "github.com/go-sql-driver/mysql"
 	"goencode/internal/config"
+	_ "modernc.org/sqlite"
 )
 
 var DB *sql.DB
 
 func Init(cfg *config.DatabaseConfig) error {
-	dsn := fmt.Sprintf("%s:%s@tcp(%s:%d)/%s?parseTime=true&loc=UTC",
-		cfg.User, cfg.Password, cfg.Host, cfg.Port, cfg.Name)
-
-	var err error
-	DB, err = sql.Open("mysql", dsn)
-	if err != nil {
-		return err
+	if cfg == nil {
+		return fmt.Errorf("database config is required")
+	}
+	if DB != nil {
+		_ = DB.Close()
+		DB = nil
 	}
 
-	// Set connection pool limits
-	DB.SetMaxOpenConns(25)
-	DB.SetMaxIdleConns(25)
-	DB.SetConnMaxLifetime(5 * time.Minute)
-
-	if err = DB.Ping(); err != nil {
-		return err
+	switch cfg.Driver {
+	case "sqlite":
+		if err := openSQLite(cfg.Path); err != nil {
+			return err
+		}
+	case "mysql":
+		if err := openMySQL(cfg); err != nil {
+			return err
+		}
+	default:
+		return fmt.Errorf("unsupported database driver %q (use sqlite or mysql)", cfg.Driver)
 	}
-
-	log.Println("Connected to MariaDB successfully")
 
 	return runMigrations()
 }
 
-func runMigrations() error {
-	queries := []string{
-		`CREATE TABLE IF NOT EXISTS watch_folders (
-			id INT AUTO_INCREMENT PRIMARY KEY,
-			folder_path VARCHAR(500) NOT NULL UNIQUE,
-			media_type ENUM('video', 'audio') NOT NULL,
-			target_resolution VARCHAR(20),
-			custom_ffmpeg_flags TEXT,
-			enabled BOOLEAN NOT NULL DEFAULT TRUE,
-			video_codec VARCHAR(32) NOT NULL DEFAULT 'libx265',
-			audio_codec VARCHAR(32) NOT NULL DEFAULT 'copy',
-			crf VARCHAR(8) NULL,
-			preset VARCHAR(32) NULL,
-			tune VARCHAR(32) NULL,
-			profile VARCHAR(32) NULL,
-			container VARCHAR(8) NOT NULL DEFAULT 'mkv',
-			output_dir VARCHAR(500) NULL,
-			delete_source BOOLEAN NOT NULL DEFAULT FALSE,
-			keep_original_if_larger BOOLEAN NOT NULL DEFAULT FALSE,
-			keep_extra_streams BOOLEAN NOT NULL DEFAULT TRUE,
-			created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-			updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
-		)`,
-		`CREATE TABLE IF NOT EXISTS jobs (
-			id INT AUTO_INCREMENT PRIMARY KEY,
-			file_path VARCHAR(500) NOT NULL,
-			media_type ENUM('video', 'audio') NOT NULL,
-			status ENUM('pending', 'processing', 'failed') NOT NULL DEFAULT 'pending',
-			priority INT NOT NULL DEFAULT 0,
-			original_size BIGINT DEFAULT 0,
-			target_resolution VARCHAR(20),
-			ffmpeg_flags TEXT,
-			error_message TEXT,
-			video_codec VARCHAR(32) NOT NULL DEFAULT 'libx265',
-			audio_codec VARCHAR(32) NOT NULL DEFAULT 'copy',
-			crf VARCHAR(8) NULL,
-			preset VARCHAR(32) NULL,
-			tune VARCHAR(32) NULL,
-			profile VARCHAR(32) NULL,
-			container VARCHAR(8) NOT NULL DEFAULT 'mkv',
-			output_dir VARCHAR(500) NULL,
-			delete_source BOOLEAN NOT NULL DEFAULT FALSE,
-			keep_original_if_larger BOOLEAN NOT NULL DEFAULT FALSE,
-			keep_extra_streams BOOLEAN NOT NULL DEFAULT TRUE,
-			force BOOLEAN NOT NULL DEFAULT FALSE,
-			created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-			updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
-		)`,
-		`CREATE TABLE IF NOT EXISTS job_reports (
-			id INT AUTO_INCREMENT PRIMARY KEY,
-			file_path VARCHAR(500) NOT NULL,
-			media_type ENUM('video', 'audio') NOT NULL,
-			status ENUM('success', 'failed', 'skipped') NOT NULL,
-			original_size BIGINT NOT NULL DEFAULT 0,
-			encoded_size BIGINT NOT NULL DEFAULT 0,
-			size_saved BIGINT NOT NULL DEFAULT 0,
-			processing_time DECIMAL(10,2) DEFAULT 0,
-			target_resolution VARCHAR(20),
-			ffmpeg_flags TEXT,
-			error_message TEXT,
-			video_codec VARCHAR(32) NOT NULL DEFAULT 'libx265',
-			audio_codec VARCHAR(32) NOT NULL DEFAULT 'copy',
-			crf VARCHAR(8) NULL,
-			preset VARCHAR(32) NULL,
-			tune VARCHAR(32) NULL,
-			profile VARCHAR(32) NULL,
-			container VARCHAR(8) NOT NULL DEFAULT 'mkv',
-			output_dir VARCHAR(500) NULL,
-			delete_source BOOLEAN NOT NULL DEFAULT FALSE,
-			keep_original_if_larger BOOLEAN NOT NULL DEFAULT FALSE,
-			keep_extra_streams BOOLEAN NOT NULL DEFAULT TRUE,
-			ffmpeg_command TEXT,
-			created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-		)`,
-		`CREATE TABLE IF NOT EXISTS app_config (
-			config_key VARCHAR(100) PRIMARY KEY,
-			config_value TEXT
-		)`,
+func openSQLite(path string) error {
+	path = strings.TrimSpace(path)
+	if path == "" {
+		path = "goencode.db"
+	}
+	abs, err := filepath.Abs(path)
+	if err != nil {
+		return fmt.Errorf("sqlite path: %w", err)
+	}
+	if err := os.MkdirAll(filepath.Dir(abs), 0755); err != nil {
+		return fmt.Errorf("create sqlite directory: %w", err)
 	}
 
+	dsn := fmt.Sprintf("file:%s?_busy_timeout=8000&_journal_mode=WAL&_foreign_keys=1&_synchronous=NORMAL&_time_format=datetime&_texttotime=1&_timezone=UTC", filepath.ToSlash(abs))
+	conn, err := sql.Open("sqlite", dsn)
+	if err != nil {
+		return err
+	}
+	conn.SetMaxOpenConns(1)
+	conn.SetMaxIdleConns(1)
+	conn.SetConnMaxLifetime(0)
+	if err := conn.Ping(); err != nil {
+		conn.Close()
+		return err
+	}
+
+	DB = conn
+	driverName = "sqlite"
+	log.Printf("Using SQLite at %s", abs)
+	return nil
+}
+
+func openMySQL(cfg *config.DatabaseConfig) error {
+	dsn := fmt.Sprintf("%s:%s@tcp(%s:%d)/%s?parseTime=true&loc=UTC",
+		cfg.User, cfg.Password, cfg.Host, cfg.Port, cfg.Name)
+	conn, err := sql.Open("mysql", dsn)
+	if err != nil {
+		return err
+	}
+	conn.SetMaxOpenConns(25)
+	conn.SetMaxIdleConns(25)
+	conn.SetConnMaxLifetime(5 * time.Minute)
+	if err := conn.Ping(); err != nil {
+		conn.Close()
+		return err
+	}
+
+	DB = conn
+	driverName = "mysql"
+	log.Println("Connected to MariaDB successfully")
+	return nil
+}
+
+func runMigrations() error {
+	queries := mysqlCreateTables
+	if usingSQLite() {
+		queries = sqliteCreateTables
+	}
 	for _, q := range queries {
 		if _, err := DB.Exec(q); err != nil {
 			return fmt.Errorf("migration failed: %w\nQuery: %s", err, q)
@@ -161,49 +143,27 @@ func ensureFilePathIndexes() error {
 }
 
 func ensureIndex(table, name, ddl string) error {
-	var count int
-	err := DB.QueryRow(`
-		SELECT COUNT(*) FROM information_schema.STATISTICS
-		WHERE TABLE_SCHEMA = DATABASE()
-		  AND TABLE_NAME = ?
-		  AND INDEX_NAME = ?
-	`, table, name).Scan(&count)
+	exists, err := indexExists(table, name)
 	if err != nil {
 		return fmt.Errorf("migration failed: check index %s.%s: %w", table, name, err)
 	}
-	if count == 0 {
-		if _, err := DB.Exec(ddl); err != nil {
-			return fmt.Errorf("migration failed: add index %s: %w", name, err)
-		}
-		log.Printf("Migrated %s: added index %s", table, name)
+	if exists {
+		return nil
 	}
+	if _, err := DB.Exec(ddl); err != nil {
+		return fmt.Errorf("migration failed: add index %s: %w", name, err)
+	}
+	log.Printf("Migrated %s: added index %s", table, name)
 	return nil
 }
 
 func ensureWatchFolderEnabledColumn() error {
-	var count int
-	err := DB.QueryRow(`
-		SELECT COUNT(*) FROM information_schema.COLUMNS
-		WHERE TABLE_SCHEMA = DATABASE()
-		  AND TABLE_NAME = 'watch_folders'
-		  AND COLUMN_NAME = 'enabled'
-	`).Scan(&count)
-	if err != nil {
-		return fmt.Errorf("migration failed: check enabled column: %w", err)
+	if err := ensureColumn("watch_folders", "enabled", "BOOLEAN NOT NULL DEFAULT TRUE"); err != nil {
+		return err
 	}
-
-	if count == 0 {
-		_, err = DB.Exec(`ALTER TABLE watch_folders ADD COLUMN enabled BOOLEAN NOT NULL DEFAULT TRUE`)
-		if err != nil {
-			return fmt.Errorf("migration failed: add enabled column: %w", err)
-		}
-		log.Println("Migrated watch_folders: enabled column added, existing folders enabled")
-	}
-
-	if _, err := DB.Exec(`UPDATE watch_folders SET enabled = TRUE WHERE enabled IS NULL`); err != nil {
+	if _, err := DB.Exec(`UPDATE watch_folders SET enabled = 1 WHERE enabled IS NULL`); err != nil {
 		return fmt.Errorf("migration failed: backfill enabled column: %w", err)
 	}
-
 	return nil
 }
 
@@ -236,23 +196,18 @@ func ensureEncodeSettingsColumns() error {
 }
 
 func ensureColumn(table, name, definition string) error {
-	var count int
-	err := DB.QueryRow(`
-		SELECT COUNT(*) FROM information_schema.COLUMNS
-		WHERE TABLE_SCHEMA = DATABASE()
-		  AND TABLE_NAME = ?
-		  AND COLUMN_NAME = ?
-	`, table, name).Scan(&count)
+	exists, err := columnExists(table, name)
 	if err != nil {
 		return fmt.Errorf("migration failed: check %s.%s: %w", table, name, err)
 	}
-	if count == 0 {
-		_, err = DB.Exec(fmt.Sprintf("ALTER TABLE `%s` ADD COLUMN `%s` %s", table, name, definition))
-		if err != nil {
-			return fmt.Errorf("migration failed: add %s.%s: %w", table, name, err)
-		}
-		log.Printf("Migrated %s: added %s", table, name)
+	if exists {
+		return nil
 	}
+	_, err = DB.Exec(fmt.Sprintf("ALTER TABLE `%s` ADD COLUMN `%s` %s", table, name, compatColumnDef(definition)))
+	if err != nil {
+		return fmt.Errorf("migration failed: add %s.%s: %w", table, name, err)
+	}
+	log.Printf("Migrated %s: added %s", table, name)
 	return nil
 }
 

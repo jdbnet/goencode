@@ -178,7 +178,7 @@ func UpdateWatchFolder(f WatchFolder) error {
 	args := []interface{}{f.FolderPath, f.MediaType, nullStr(f.TargetResolution), nullStr(f.CustomFFmpegFlags)}
 	args = append(args, encodeInsertArgs(f.EncodeSettings)...)
 	args = append(args, f.ID)
-	_, err := DB.Exec(`UPDATE watch_folders SET folder_path = ?, media_type = ?, target_resolution = ?, custom_ffmpeg_flags = ?, video_codec = ?, audio_codec = ?, crf = ?, preset = ?, tune = ?, profile = ?, container = ?, output_dir = ?, delete_source = ?, keep_original_if_larger = ?, keep_extra_streams = ? WHERE id = ?`, args...)
+	_, err := DB.Exec(`UPDATE watch_folders SET folder_path = ?, media_type = ?, target_resolution = ?, custom_ffmpeg_flags = ?, video_codec = ?, audio_codec = ?, crf = ?, preset = ?, tune = ?, profile = ?, container = ?, output_dir = ?, delete_source = ?, keep_original_if_larger = ?, keep_extra_streams = ?, updated_at = `+nowUTCExpr()+` WHERE id = ?`, args...)
 	return err
 }
 
@@ -192,7 +192,7 @@ func GetWatchFolderByID(id int) (WatchFolder, error) {
 }
 
 func SetWatchFolderEnabled(id int, enabled bool) error {
-	_, err := DB.Exec(`UPDATE watch_folders SET enabled = ? WHERE id = ?`, enabled, id)
+	_, err := DB.Exec(`UPDATE watch_folders SET enabled = ?, updated_at = `+nowUTCExpr()+` WHERE id = ?`, enabled, id)
 	return err
 }
 
@@ -229,9 +229,9 @@ func collectFilePaths(query string, args ...interface{}) (map[string]struct{}, e
 func KnownFilePathsUnder(folderPath string) (map[string]struct{}, error) {
 	exact, like := pathPrefixFilter(folderPath)
 	return collectFilePaths(
-		`SELECT file_path FROM jobs WHERE file_path = ? OR file_path LIKE ? ESCAPE '\\'
+		`SELECT file_path FROM jobs WHERE file_path = ? OR file_path LIKE ? `+likeEscapeClause()+`
 		 UNION
-		 SELECT file_path FROM job_reports WHERE file_path = ? OR file_path LIKE ? ESCAPE '\\'`,
+		 SELECT file_path FROM job_reports WHERE file_path = ? OR file_path LIKE ? `+likeEscapeClause(),
 		exact, like, exact, like,
 	)
 }
@@ -239,7 +239,7 @@ func KnownFilePathsUnder(folderPath string) (map[string]struct{}, error) {
 func QueuedFilePathsUnder(folderPath string) (map[string]struct{}, error) {
 	exact, like := pathPrefixFilter(folderPath)
 	return collectFilePaths(
-		`SELECT file_path FROM jobs WHERE file_path = ? OR file_path LIKE ? ESCAPE '\\'`,
+		`SELECT file_path FROM jobs WHERE file_path = ? OR file_path LIKE ? `+likeEscapeClause(),
 		exact, like,
 	)
 }
@@ -282,7 +282,7 @@ func FolderContaining(filePath string) (WatchFolder, bool) {
 
 func DeleteJobsUnderPath(folderPath string) (int64, error) {
 	exact, like := pathPrefixFilter(folderPath)
-	res, err := DB.Exec(`DELETE FROM jobs WHERE file_path = ? OR file_path LIKE ? ESCAPE '\\'`, exact, like)
+	res, err := DB.Exec(`DELETE FROM jobs WHERE file_path = ? OR file_path LIKE ? `+likeEscapeClause(), exact, like)
 	if err != nil {
 		return 0, err
 	}
@@ -291,7 +291,7 @@ func DeleteJobsUnderPath(folderPath string) (int64, error) {
 
 func DeleteJobReportsUnderPath(folderPath string) (int64, error) {
 	exact, like := pathPrefixFilter(folderPath)
-	res, err := DB.Exec(`DELETE FROM job_reports WHERE file_path = ? OR file_path LIKE ? ESCAPE '\\'`, exact, like)
+	res, err := DB.Exec(`DELETE FROM job_reports WHERE file_path = ? OR file_path LIKE ? `+likeEscapeClause(), exact, like)
 	if err != nil {
 		return 0, err
 	}
@@ -349,12 +349,12 @@ func GetJobsPaginated(limit, offset int) ([]Job, int, error) {
 }
 
 func UpdateJobStatus(id int, status, errMsg string) error {
-	_, err := DB.Exec(`UPDATE jobs SET status = ?, error_message = ?, updated_at = UTC_TIMESTAMP(6) WHERE id = ?`, status, nullStr(errMsg), id)
+	_, err := DB.Exec(`UPDATE jobs SET status = ?, error_message = ?, updated_at = `+nowUTCExpr()+` WHERE id = ?`, status, nullStr(errMsg), id)
 	return err
 }
 
 func ClaimJob(id int) (bool, error) {
-	res, err := DB.Exec(`UPDATE jobs SET status = 'processing', error_message = NULL, updated_at = UTC_TIMESTAMP(6) WHERE id = ? AND status = 'pending'`, id)
+	res, err := DB.Exec(`UPDATE jobs SET status = 'processing', error_message = NULL, updated_at = `+nowUTCExpr()+` WHERE id = ? AND status = 'pending'`, id)
 	if err != nil {
 		return false, err
 	}

@@ -59,11 +59,17 @@ type ServerConfig struct {
 }
 
 type DatabaseConfig struct {
+	Driver   string `yaml:"driver"`
+	Path     string `yaml:"path"`
 	Host     string `yaml:"host"`
 	Port     int    `yaml:"port"`
 	User     string `yaml:"user"`
 	Password string `yaml:"password"`
 	Name     string `yaml:"name"`
+}
+
+func (c DatabaseConfig) IsSQLite() bool {
+	return c.Driver == "sqlite"
 }
 
 type EncoderConfig struct {
@@ -129,6 +135,8 @@ func LoadConfig(path string) (*Config, error) {
 	cfg.Server.ListenAddr = getEnvStrFirst(cfg.Server.ListenAddr, "GOENCODE_LISTEN_ADDR", "GOENCODE_SERVER_LISTEN")
 	cfg.Auth.Username = getEnvStr("GOENCODE_AUTH_USER", cfg.Auth.Username)
 	cfg.Auth.Password = getEnvStr("GOENCODE_AUTH_PASS", cfg.Auth.Password)
+	cfg.Database.Driver = getEnvStrFirst(cfg.Database.Driver, "GOENCODE_DB_DRIVER", "GOENCODE_DATABASE_DRIVER")
+	cfg.Database.Path = getEnvStr("GOENCODE_DB_PATH", cfg.Database.Path)
 	cfg.Database.Host = getEnvStr("GOENCODE_DB_HOST", cfg.Database.Host)
 	cfg.Database.Port = getEnvInt("GOENCODE_DB_PORT", cfg.Database.Port)
 	cfg.Database.User = getEnvStr("GOENCODE_DB_USER", cfg.Database.User)
@@ -156,7 +164,19 @@ func LoadConfig(path string) (*Config, error) {
 	if cfg.Server.ListenAddr == "" {
 		cfg.Server.ListenAddr = "0.0.0.0"
 	}
-	if cfg.Database.Port == 0 {
+	cfg.Database.Driver = normalizeDBDriver(cfg.Database.Driver)
+	if cfg.Database.Driver == "" {
+		if strings.TrimSpace(cfg.Database.Host) != "" {
+			cfg.Database.Driver = "mysql"
+		} else {
+			cfg.Database.Driver = "sqlite"
+		}
+	}
+	if cfg.Database.IsSQLite() {
+		if strings.TrimSpace(cfg.Database.Path) == "" {
+			cfg.Database.Path = "goencode.db"
+		}
+	} else if cfg.Database.Port == 0 {
 		cfg.Database.Port = 3306
 	}
 	if cfg.Encoder.TempDir == "" {
@@ -188,4 +208,15 @@ func splitCSV(s string) []string {
 		}
 	}
 	return out
+}
+
+func normalizeDBDriver(s string) string {
+	switch strings.ToLower(strings.TrimSpace(s)) {
+	case "sqlite", "sqlite3":
+		return "sqlite"
+	case "mysql", "mariadb":
+		return "mysql"
+	default:
+		return strings.ToLower(strings.TrimSpace(s))
+	}
 }

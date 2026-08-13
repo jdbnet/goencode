@@ -8,11 +8,14 @@ auth:
   password: "password"
 
 database:
-  host: "db"
-  port: 3306
-  user: "root"
-  password: "root"
-  name: "encoder"
+  driver: sqlite
+  path: goencode.db
+  # driver: mysql
+  # host: "db"
+  # port: 3306
+  # user: "root"
+  # password: "root"
+  # name: "encoder"
 
 encoder:
   ffmpeg_path: "ffmpeg"

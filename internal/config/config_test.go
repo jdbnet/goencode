@@ -96,3 +96,61 @@ func TestNotifyEventsEnv(t *testing.T) {
 		t.Fatalf("discord/gotify = %+v %+v", cfg.Notifications.Discord, cfg.Notifications.Gotify)
 	}
 }
+
+func TestDatabaseDefaultsToSQLite(t *testing.T) {
+	cfg, err := LoadConfig("does-not-exist.yaml")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.Database.Driver != "sqlite" {
+		t.Fatalf("Driver = %q, want sqlite", cfg.Database.Driver)
+	}
+	if cfg.Database.Path != "goencode.db" {
+		t.Fatalf("Path = %q, want goencode.db", cfg.Database.Path)
+	}
+	if cfg.Database.Port != 0 {
+		t.Fatalf("Port = %d, want 0 for sqlite", cfg.Database.Port)
+	}
+}
+
+func TestDatabaseHostImpliesMySQL(t *testing.T) {
+	t.Setenv("GOENCODE_DB_HOST", "db")
+	cfg, err := LoadConfig("does-not-exist.yaml")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.Database.Driver != "mysql" {
+		t.Fatalf("Driver = %q, want mysql", cfg.Database.Driver)
+	}
+	if cfg.Database.Port != 3306 {
+		t.Fatalf("Port = %d, want 3306", cfg.Database.Port)
+	}
+}
+
+func TestDatabaseDriverSQLiteOverridesHost(t *testing.T) {
+	t.Setenv("GOENCODE_DB_HOST", "db")
+	t.Setenv("GOENCODE_DB_DRIVER", "sqlite")
+	t.Setenv("GOENCODE_DB_PATH", "/var/lib/goencode/goencode.db")
+	cfg, err := LoadConfig("does-not-exist.yaml")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.Database.Driver != "sqlite" {
+		t.Fatalf("Driver = %q, want sqlite", cfg.Database.Driver)
+	}
+	if cfg.Database.Path != "/var/lib/goencode/goencode.db" {
+		t.Fatalf("Path = %q", cfg.Database.Path)
+	}
+}
+
+func TestDatabaseMariaDBAlias(t *testing.T) {
+	t.Setenv("GOENCODE_DB_DRIVER", "mariadb")
+	t.Setenv("GOENCODE_DB_HOST", "127.0.0.1")
+	cfg, err := LoadConfig("does-not-exist.yaml")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.Database.Driver != "mysql" {
+		t.Fatalf("Driver = %q, want mysql", cfg.Database.Driver)
+	}
+}
