@@ -155,7 +155,6 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("/history", s.handleHistory)
 	s.mux.HandleFunc("/reports", s.handlePage("reports.html"))
 	s.mux.HandleFunc("/logs", s.handlePage("logs.html"))
-	s.mux.HandleFunc("/settings", s.handlePage("settings.html"))
 }
 
 func (s *Server) handleGetLogs(w http.ResponseWriter, r *http.Request) {
