@@ -143,6 +143,7 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("/api/folders/enabled/", s.handleSetWatchFolderEnabled)
 	s.mux.HandleFunc("/api/folders/delete/", s.handleDeleteWatchFolder)
 	s.mux.HandleFunc("/api/logs", s.handleGetLogs)
+	s.mux.HandleFunc("/api/reports", s.handleGetReports)
 
 	// Static files
 	s.mux.Handle("/static/", http.FileServer(http.FS(rootweb.FS)))
@@ -151,6 +152,7 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("/", s.handleDashboard)
 	s.mux.HandleFunc("/folders", s.handlePage("folders.html"))
 	s.mux.HandleFunc("/history", s.handleHistory)
+	s.mux.HandleFunc("/reports", s.handlePage("reports.html"))
 	s.mux.HandleFunc("/logs", s.handlePage("logs.html"))
 	s.mux.HandleFunc("/settings", s.handlePage("settings.html"))
 }

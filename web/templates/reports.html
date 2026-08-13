@@ -1,0 +1,227 @@
+{{define "content"}}
+<div class="reports-header">
+    <h2 style="margin: 0;">Reports</h2>
+    <div class="range-pills" id="range-pills">
+        <button type="button" class="range-pill" data-range="7d">7 days</button>
+        <button type="button" class="range-pill" data-range="30d">30 days</button>
+        <button type="button" class="range-pill" data-range="90d">90 days</button>
+        <button type="button" class="range-pill" data-range="all">All time</button>
+    </div>
+</div>
+
+<div class="stat-grid" id="stat-grid"></div>
+
+<div class="chart-grid">
+    <div class="card chart-card">
+        <h3>Outcomes</h3>
+        <div class="chart-body" id="chart-outcomes"></div>
+    </div>
+    <div class="card chart-card">
+        <h3>Space saved</h3>
+        <div class="chart-body chart-body-wide" id="chart-saved"></div>
+    </div>
+    <div class="card chart-card">
+        <h3>Jobs over time</h3>
+        <div class="chart-body chart-body-wide" id="chart-jobs"></div>
+    </div>
+    <div class="card chart-card">
+        <h3>Codec mix</h3>
+        <div class="chart-body" id="chart-codec"></div>
+    </div>
+    <div class="card chart-card">
+        <h3>Space saved by folder</h3>
+        <div class="chart-body" id="chart-folders"></div>
+    </div>
+    <div class="card chart-card">
+        <h3>Media type</h3>
+        <div class="chart-body" id="chart-media"></div>
+    </div>
+</div>
+
+<div class="card" style="margin-top: 1.25rem;">
+    <h3>Biggest space savers</h3>
+    <div class="table-container">
+        <table>
+            <thead>
+                <tr>
+                    <th>File</th>
+                    <th>Original</th>
+                    <th>Encoded</th>
+                    <th>Saved</th>
+                    <th>Time</th>
+                </tr>
+            </thead>
+            <tbody id="top-savers-body">
+                <tr><td colspan="5" class="chart-empty" style="border: 0;">No successful encodes in this range</td></tr>
+            </tbody>
+        </table>
+    </div>
+</div>
+
+<script src="/static/charts.js"></script>
+<script>
+    const CODEC_LABELS = { libx265: 'HEVC', libx264: 'H.264', libsvtav1: 'AV1', copy: 'Copy' };
+    let currentRange = '30d';
+
+    function formatBytes(n) {
+        const bytes = Number(n) || 0;
+        const abs = Math.abs(bytes);
+        if (abs < 1024) return bytes + ' B';
+        const units = ['KB', 'MB', 'GB', 'TB', 'PB'];
+        let v = abs / 1024;
+        let i = 0;
+        while (v >= 1024 && i < units.length - 1) {
+            v /= 1024;
+            i++;
+        }
+        const sign = bytes < 0 ? '-' : '';
+        return sign + v.toFixed(v >= 10 ? 1 : 2) + ' ' + units[i];
+    }
+
+    function formatDuration(seconds) {
+        const s = Number(seconds) || 0;
+        if (s <= 0) return '0s';
+        const total = Math.floor(s);
+        const h = Math.floor(total / 3600);
+        const m = Math.floor((total % 3600) / 60);
+        const sec = total % 60;
+        if (h > 0) return h + 'h ' + m + 'm';
+        if (m > 0) return m + 'm ' + sec + 's';
+        return s < 1 ? s.toFixed(2) + 's' : s.toFixed(1) + 's';
+    }
+
+    function formatAxisBytes(n) {
+        const abs = Math.abs(n);
+        if (abs >= 1024 * 1024 * 1024) return (n / (1024 * 1024 * 1024)).toFixed(1) + ' GB';
+        if (abs >= 1024 * 1024) return (n / (1024 * 1024)).toFixed(0) + ' MB';
+        if (abs >= 1024) return (n / 1024).toFixed(0) + ' KB';
+        return String(Math.round(n));
+    }
+
+    function shortDay(day, bucket) {
+        if (!day) return '';
+        const d = new Date(day + 'T00:00:00Z');
+        if (bucket === 'month') {
+            return d.toLocaleString('en-US', { month: 'short', timeZone: 'UTC' });
+        }
+        return d.toLocaleString('en-US', { month: 'short', day: 'numeric', timeZone: 'UTC' });
+    }
+
+    function basename(path) {
+        const parts = String(path || '').split('/');
+        return parts[parts.length - 1] || path;
+    }
+
+    function setRangePills() {
+        document.querySelectorAll('.range-pill').forEach(btn => {
+            btn.classList.toggle('active', btn.dataset.range === currentRange);
+        });
+    }
+
+    function renderStats(t) {
+        const failRate = t.jobs ? ((t.failed / t.jobs) * 100) : 0;
+        const cards = [
+            { label: 'Files encoded', value: (t.success || 0).toLocaleString(), sub: (t.jobs || 0).toLocaleString() + ' jobs total' },
+            { label: 'Space saved', value: formatBytes(t.space_saved), sub: formatBytes(t.original_size) + ' in, ' + formatBytes(t.encoded_size) + ' out' },
+            { label: 'Average saving', value: (t.compression_pct || 0).toFixed(1) + '%', sub: 'vs original file size' },
+            { label: 'Encode time', value: formatDuration(t.encode_seconds), sub: 'avg ' + formatDuration(t.avg_encode_seconds) + ' per file' },
+            { label: 'Skipped', value: (t.skipped || 0).toLocaleString(), sub: 'already matched or larger' },
+            { label: 'Failure rate', value: failRate.toFixed(1) + '%', sub: (t.failed || 0).toLocaleString() + ' failed' },
+        ];
+        document.getElementById('stat-grid').innerHTML = cards.map(c => `
+            <div class="card stat-card">
+                <div class="stat-label">${c.label}</div>
+                <div class="stat-value">${c.value}</div>
+                <div class="stat-sub">${c.sub}</div>
+            </div>
+        `).join('');
+    }
+
+    function renderTopSavers(rows) {
+        const body = document.getElementById('top-savers-body');
+        if (!rows || !rows.length) {
+            body.innerHTML = '<tr><td colspan="5" style="text-align:center; color: var(--text-secondary);">No successful encodes in this range</td></tr>';
+            return;
+        }
+        body.innerHTML = rows.map(r => `
+            <tr>
+                <td style="word-break: break-all;" title="${r.file_path}">${basename(r.file_path)}</td>
+                <td>${formatBytes(r.original_size)}</td>
+                <td>${formatBytes(r.encoded_size)}</td>
+                <td style="color: var(--accent);">${formatBytes(r.size_saved)}</td>
+                <td>${formatDuration(r.processing_time)}</td>
+            </tr>
+        `).join('');
+    }
+
+    async function loadReports() {
+        setRangePills();
+        const res = await fetch('/api/reports?range=' + encodeURIComponent(currentRange));
+        if (!res.ok) {
+            alert('Failed to load reports: ' + await res.text());
+            return;
+        }
+        const data = await res.json();
+        const t = data.totals || {};
+        renderStats(t);
+
+        GoEncodeCharts.donut(document.getElementById('chart-outcomes'), [
+            { label: 'Success', value: t.success || 0, color: GoEncodeCharts.COLORS.accent },
+            { label: 'Skipped', value: t.skipped || 0, color: GoEncodeCharts.COLORS.muted },
+            { label: 'Failed', value: t.failed || 0, color: GoEncodeCharts.COLORS.error },
+        ], { center: String(t.jobs || 0), centerSub: 'jobs' });
+
+        const daily = data.daily || [];
+        GoEncodeCharts.bars(document.getElementById('chart-saved'), daily.map(d => ({
+            label: d.day,
+            shortLabel: shortDay(d.day, data.bucket),
+            value: d.space_saved || 0,
+        })), {
+            color: GoEncodeCharts.COLORS.accent,
+            formatY: formatAxisBytes,
+            formatTip: (v) => formatBytes(v) + ' saved',
+            empty: 'No successful encodes in this range',
+        });
+
+        GoEncodeCharts.bars(document.getElementById('chart-jobs'), daily.map(d => ({
+            label: d.day,
+            shortLabel: shortDay(d.day, data.bucket),
+            value: d.jobs || 0,
+        })), {
+            color: GoEncodeCharts.COLORS.blue,
+            formatY: (v) => String(Math.round(v)),
+            formatTip: (v) => v.toLocaleString() + ' jobs',
+            empty: 'No jobs in this range',
+        });
+
+        GoEncodeCharts.donut(document.getElementById('chart-codec'), (data.by_codec || []).map(g => ({
+            label: CODEC_LABELS[g.name] || g.name,
+            value: g.jobs || 0,
+        })), { centerSub: 'encodes', empty: 'No video encodes in this range' });
+
+        GoEncodeCharts.hbars(document.getElementById('chart-folders'), (data.by_folder || []).map(g => ({
+            label: g.name,
+            value: g.space_saved || 0,
+        })).sort((a, b) => b.value - a.value), {
+            format: formatBytes,
+            empty: 'No folder activity in this range',
+        });
+
+        GoEncodeCharts.donut(document.getElementById('chart-media'), (data.by_media_type || []).map(g => ({
+            label: g.name === 'audio' ? 'Audio' : 'Video',
+            value: g.jobs || 0,
+        })), { centerSub: 'jobs', empty: 'No jobs in this range' });
+
+        renderTopSavers(data.top_savers);
+    }
+
+    document.getElementById('range-pills').addEventListener('click', (e) => {
+        const btn = e.target.closest('.range-pill');
+        if (!btn) return;
+        currentRange = btn.dataset.range;
+        loadReports();
+    });
+
+    loadReports();
+</script>
+{{end}}

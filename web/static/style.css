@@ -376,6 +376,249 @@ tbody tr.folder-disabled {
 	border-color: var(--accent);
 }
 
+/* Reports */
+.reports-header {
+	display: flex;
+	justify-content: space-between;
+	align-items: center;
+	flex-wrap: wrap;
+	gap: 1rem;
+	margin-bottom: 1.25rem;
+}
+
+.range-pills {
+	display: flex;
+	gap: 0.4rem;
+	flex-wrap: wrap;
+}
+
+.range-pill {
+	background: var(--surface);
+	color: var(--text-secondary);
+	border: 1px solid var(--border);
+	border-radius: 999px;
+	padding: 0.35rem 0.85rem;
+	font-size: 0.8rem;
+	font-family: inherit;
+	cursor: pointer;
+	transition: all 0.2s;
+}
+
+.range-pill:hover {
+	border-color: var(--text-secondary);
+	color: var(--text-primary);
+}
+
+.range-pill.active {
+	background: rgba(33, 209, 152, 0.12);
+	border-color: var(--accent);
+	color: var(--accent);
+}
+
+.stat-grid {
+	display: grid;
+	grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+	gap: 1rem;
+	margin-bottom: 1.25rem;
+}
+
+.stat-card {
+	padding: 1.15rem 1.25rem;
+	margin-bottom: 0;
+}
+
+.stat-label {
+	color: var(--text-secondary);
+	font-size: 0.75rem;
+	text-transform: uppercase;
+	letter-spacing: 0.04em;
+	margin-bottom: 0.35rem;
+}
+
+.stat-value {
+	font-size: 1.65rem;
+	font-weight: 700;
+	color: var(--accent);
+	line-height: 1.2;
+}
+
+.stat-sub {
+	margin-top: 0.35rem;
+	font-size: 0.75rem;
+	color: var(--text-secondary);
+}
+
+.chart-grid {
+	display: grid;
+	grid-template-columns: repeat(2, minmax(0, 1fr));
+	gap: 1.25rem;
+}
+
+.chart-card {
+	margin-bottom: 0;
+	min-height: 280px;
+}
+
+.chart-card h3 {
+	font-size: 0.95rem;
+	color: var(--text-primary);
+	margin-bottom: 0.75rem;
+}
+
+.chart-body {
+	min-height: 200px;
+}
+
+.chart-body-wide {
+	min-height: 240px;
+}
+
+.chart-empty {
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	min-height: 180px;
+	color: var(--text-secondary);
+	font-size: 0.875rem;
+}
+
+.donut-wrap {
+	display: flex;
+	align-items: center;
+	gap: 1.25rem;
+	flex-wrap: wrap;
+}
+
+.donut-svg {
+	width: 196px;
+	height: 196px;
+	flex-shrink: 0;
+}
+
+.donut-seg {
+	cursor: pointer;
+}
+
+.donut-center {
+	fill: var(--text-primary);
+	font-size: 22px;
+	font-weight: 700;
+	font-family: inherit;
+}
+
+.donut-sub {
+	fill: var(--text-secondary);
+	font-size: 11px;
+	font-family: inherit;
+}
+
+.chart-legend {
+	display: flex;
+	flex-direction: column;
+	gap: 0.45rem;
+	flex: 1;
+	min-width: 140px;
+}
+
+.chart-legend-row {
+	display: flex;
+	align-items: center;
+	gap: 0.5rem;
+	font-size: 0.8125rem;
+	color: var(--text-primary);
+}
+
+.chart-legend-val {
+	margin-left: auto;
+	color: var(--text-secondary);
+	font-variant-numeric: tabular-nums;
+}
+
+.chart-swatch {
+	width: 0.65rem;
+	height: 0.65rem;
+	border-radius: 2px;
+	flex-shrink: 0;
+}
+
+.bar-svg {
+	width: 100%;
+	height: 240px;
+	display: block;
+}
+
+.bar-seg {
+	cursor: pointer;
+}
+
+.bar-seg:hover {
+	filter: brightness(1.15);
+}
+
+.chart-axis {
+	fill: var(--text-secondary);
+	font-size: 10px;
+	font-family: inherit;
+}
+
+.hbar-list {
+	display: flex;
+	flex-direction: column;
+	gap: 0.7rem;
+}
+
+.hbar-row {
+	display: grid;
+	grid-template-columns: minmax(0, 1.2fr) minmax(0, 2fr) auto;
+	gap: 0.75rem;
+	align-items: center;
+}
+
+.hbar-label {
+	font-size: 0.8rem;
+	color: var(--text-primary);
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+.hbar-track {
+	height: 8px;
+	background: var(--bg);
+	border: 1px solid var(--border);
+	border-radius: 999px;
+	overflow: hidden;
+}
+
+.hbar-fill {
+	height: 100%;
+	border-radius: 999px;
+	background: var(--accent);
+}
+
+.hbar-val {
+	font-size: 0.75rem;
+	color: var(--text-secondary);
+	white-space: nowrap;
+	font-variant-numeric: tabular-nums;
+}
+
+.chart-tooltip {
+	position: fixed;
+	z-index: 50;
+	pointer-events: none;
+	background: var(--surface);
+	border: 1px solid var(--border);
+	border-radius: 6px;
+	padding: 0.4rem 0.6rem;
+	font-size: 0.75rem;
+	color: var(--text-primary);
+	box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+	opacity: 0;
+	transition: opacity 0.12s;
+	max-width: 240px;
+}
+
 /* Responsive adjustments */
 @media (max-width: 768px) {
 	.navbar {
@@ -419,5 +662,14 @@ tbody tr.folder-disabled {
 		flex-direction: column;
 		align-items: flex-start !important;
 		gap: 1rem;
+	}
+
+	.chart-grid {
+		grid-template-columns: 1fr;
+	}
+
+	.hbar-row {
+		grid-template-columns: 1fr;
+		gap: 0.25rem;
 	}
 }
