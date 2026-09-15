@@ -13,7 +13,6 @@ import (
 	"goencode/internal/logger"
 	"goencode/internal/notify"
 	"goencode/internal/queue"
-	"goencode/internal/updater"
 	"goencode/internal/watcher"
 	"goencode/internal/web"
 )
@@ -22,12 +21,7 @@ var Version string = "dev"
 
 func main() {
 	configPath := flag.String("config", "goencode.yaml", "Path to configuration file")
-	noUpdate := flag.Bool("no-update", false, "Disable automatic update check on startup")
 	flag.Parse()
-
-	if err := updater.MaybeUpdate(Version, *noUpdate); err != nil {
-		log.Printf("Update check failed, continuing: %v", err)
-	}
 
 	cfg, err := config.LoadConfig(*configPath)
 	if err != nil {

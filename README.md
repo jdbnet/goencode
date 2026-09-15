@@ -24,18 +24,18 @@ GoEncode is a lightweight, high-performance media transcoding server written in 
 
 ## Deployment with Docker
 
-The easiest way to run GoEncode is via Docker using the pre-built image. Docker images do not self-update; pull a new image instead.
+The easiest way to run GoEncode is via Docker using the pre-built image.
 
 ### Image Registry
 
-`cr.jdbnet.co.uk/public/goencode:latest`
+`ghcr.io/jdbnet/goencode:latest`
 
 ### Example `docker-compose.yml`
 
 ```yaml
 services:
   goencode:
-    image: cr.jdbnet.co.uk/public/goencode:latest
+    image: ghcr.io/jdbnet/goencode:latest
     container_name: goencode
     restart: unless-stopped
     ports:
@@ -90,7 +90,7 @@ volumes:
 Linux AMD64. Needs `ffmpeg` (`sudo apt install ffmpeg`, or `dnf` / `pacman -S ffmpeg`).
 
 ```bash
-curl -L -o goencode https://apps.jdbnet.co.uk/goencode
+curl -L -o goencode https://github.com/jdbnet/goencode/releases/latest/download/goencode
 chmod +x goencode
 ./goencode
 ```
@@ -151,6 +151,5 @@ GoEncode can be configured via `goencode.yaml` or entirely via environment varia
 | `GOENCODE_ENCODER_WORKERS` | Concurrent encode jobs (1-16) | `1` |
 | `GOENCODE_ENCODER_THREADS` | CPU threads per ffmpeg process. `0` uses ffmpeg's default (all cores). x265/AV1 also get a matching pool cap | `0` |
 | `GOENCODE_ENCODER_MIN_FREE_GB` | Abort encode if temp or output filesystem would drop below this many GB (also refuses copies larger than free space) | `5` |
-| `GOENCODE_NO_UPDATE` | Set to `1` or `true` to disable binary auto-update on startup | |
 
 Success notifications include the filename and size saved (for example `Saved 40.0 GB`). Skip notifications fire when a queued job is skipped (already the target codec, or encoded file was larger). Files skipped during a folder scan are not notified, so a library scan does not flood your phone. Use `GOENCODE_NOTIFY_EVENTS=failed` to keep failure-only alerts.

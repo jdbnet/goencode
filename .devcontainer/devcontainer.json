@@ -1,6 +1,6 @@
 {
 	"name": "GoEncode",
-	"image": "mcr.microsoft.com/devcontainers/go:2-1.26-trixie",
+	"image": "mcr.microsoft.com/devcontainers/go:2-1.27-trixie",
 	"customizations": {
 		"vscode": {
 			"extensions": [

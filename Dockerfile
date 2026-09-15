@@ -1,5 +1,5 @@
 # Build stage
-FROM golang:1.26.4-bookworm AS builder
+FROM golang:1.27.1-bookworm AS builder
 
 WORKDIR /app
 
@@ -32,4 +32,4 @@ EXPOSE 8080
 
 # Run the binary
 ENTRYPOINT ["/app/goencode"]
-CMD ["--no-update", "--config", "/etc/goencode/config.yaml"]
+CMD ["--config", "/etc/goencode/config.yaml"]

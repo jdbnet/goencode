@@ -1,0 +1,77 @@
+name: Release
+
+on:
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: write
+  packages: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Calculate Version
+        id: semantic
+        uses: go-semantic-release/action@v1
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          allow-initial-development-versions: true
+
+      - name: Checkout release tag
+        if: steps.semantic.outputs.version != ''
+        uses: actions/checkout@v4
+        with:
+          ref: v${{ steps.semantic.outputs.version }}
+          fetch-depth: 0
+
+      - name: Set up Go
+        if: steps.semantic.outputs.version != ''
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
+      - name: Build Binary
+        if: steps.semantic.outputs.version != ''
+        run: |
+          go mod tidy
+          CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -ldflags="-s -w -X main.Version=${{ steps.semantic.outputs.version }}" -o goencode ./cmd/goencode
+
+      - name: Upload release assets
+        if: steps.semantic.outputs.version != ''
+        run: gh release upload "v${{ steps.semantic.outputs.version }}" goencode --clobber
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Set up Docker Buildx
+        if: steps.semantic.outputs.version != ''
+        uses: docker/setup-buildx-action@v4
+
+      - name: Log in to GitHub Container Registry
+        if: steps.semantic.outputs.version != ''
+        uses: docker/login-action@v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push Docker image
+        if: steps.semantic.outputs.version != ''
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          push: true
+          tags: |
+            ghcr.io/jdbnet/goencode:v${{ steps.semantic.outputs.version }}
+            ghcr.io/jdbnet/goencode:latest
+          build-args: |
+            APP_VERSION=${{ steps.semantic.outputs.version }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
