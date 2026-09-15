@@ -80,6 +80,23 @@ var mysqlCreateTables = []string{
 			config_key VARCHAR(100) PRIMARY KEY,
 			config_value TEXT
 		)`,
+	`CREATE TABLE IF NOT EXISTS download_jobs (
+			id INT AUTO_INCREMENT PRIMARY KEY,
+			url TEXT NOT NULL,
+			title VARCHAR(500) NULL,
+			filename VARCHAR(500) NULL,
+			dest_path VARCHAR(500) NOT NULL,
+			file_path VARCHAR(500) NULL,
+			format_id VARCHAR(128) NOT NULL,
+			mode ENUM('encode', 'download_only') NOT NULL,
+			watch_folder_id INT NULL,
+			status ENUM('pending', 'downloading', 'completed', 'failed', 'cancelled') NOT NULL DEFAULT 'pending',
+			progress REAL NOT NULL DEFAULT 0,
+			error_message TEXT NULL,
+			file_size BIGINT NOT NULL DEFAULT 0,
+			created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+			updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+		)`,
 }
 
 var sqliteCreateTables = []string{
@@ -161,5 +178,22 @@ var sqliteCreateTables = []string{
 	`CREATE TABLE IF NOT EXISTS app_config (
 			config_key TEXT PRIMARY KEY,
 			config_value TEXT
+		)`,
+	`CREATE TABLE IF NOT EXISTS download_jobs (
+			id INTEGER PRIMARY KEY AUTOINCREMENT,
+			url TEXT NOT NULL,
+			title TEXT,
+			filename TEXT,
+			dest_path TEXT NOT NULL,
+			file_path TEXT,
+			format_id TEXT NOT NULL,
+			mode TEXT NOT NULL,
+			watch_folder_id INTEGER,
+			status TEXT NOT NULL DEFAULT 'pending',
+			progress REAL NOT NULL DEFAULT 0,
+			error_message TEXT,
+			file_size INTEGER NOT NULL DEFAULT 0,
+			created_at DATETIME NOT NULL DEFAULT (datetime('now')),
+			updated_at DATETIME NOT NULL DEFAULT (datetime('now'))
 		)`,
 }

@@ -499,3 +499,126 @@ func GetDashboardStats() (DashboardStats, error) {
 
 	return stats, nil
 }
+
+const downloadJobSelectCols = `id, url, title, filename, dest_path, file_path, format_id, mode, watch_folder_id, status, progress, error_message, file_size, created_at, updated_at`
+
+func scanDownloadJob(scan func(dest ...interface{}) error) (DownloadJob, error) {
+	var j DownloadJob
+	var title, filename, filePath, errMsg sql.NullString
+	var watchFolderID sql.NullInt64
+	err := scan(
+		&j.ID, &j.URL, &title, &filename, &j.DestPath, &filePath, &j.FormatID, &j.Mode, &watchFolderID,
+		&j.Status, &j.Progress, &errMsg, &j.FileSize, &j.CreatedAt, &j.UpdatedAt,
+	)
+	if err != nil {
+		return j, err
+	}
+	if title.Valid {
+		j.Title = title.String
+	}
+	if filename.Valid {
+		j.Filename = filename.String
+	}
+	if filePath.Valid {
+		j.FilePath = filePath.String
+	}
+	if errMsg.Valid {
+		j.ErrorMessage = errMsg.String
+	}
+	if watchFolderID.Valid {
+		id := int(watchFolderID.Int64)
+		j.WatchFolderID = &id
+	}
+	return j, nil
+}
+
+func AddDownloadJob(j DownloadJob) (int64, error) {
+	var watchFolderID sql.NullInt64
+	if j.WatchFolderID != nil {
+		watchFolderID = sql.NullInt64{Int64: int64(*j.WatchFolderID), Valid: true}
+	}
+	res, err := DB.Exec(`INSERT INTO download_jobs (url, title, filename, dest_path, format_id, mode, watch_folder_id, status) VALUES (?, ?, ?, ?, ?, ?, ?, 'pending')`,
+		j.URL, nullStr(j.Title), nullStr(j.Filename), j.DestPath, j.FormatID, j.Mode, watchFolderID)
+	if err != nil {
+		return 0, err
+	}
+	return res.LastInsertId()
+}
+
+func GetDownloadJobByID(id int) (DownloadJob, error) {
+	return scanDownloadJob(DB.QueryRow(`SELECT `+downloadJobSelectCols+` FROM download_jobs WHERE id = ?`, id).Scan)
+}
+
+func GetDownloadJobs(limit int) ([]DownloadJob, error) {
+	if limit <= 0 {
+		limit = 50
+	}
+	rows, err := DB.Query(`SELECT `+downloadJobSelectCols+` FROM download_jobs ORDER BY created_at DESC LIMIT ?`, limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var jobs []DownloadJob
+	for rows.Next() {
+		j, err := scanDownloadJob(rows.Scan)
+		if err != nil {
+			return nil, err
+		}
+		jobs = append(jobs, j)
+	}
+	return jobs, rows.Err()
+}
+
+func GetPendingDownloadJobs() ([]DownloadJob, error) {
+	rows, err := DB.Query(`SELECT ` + downloadJobSelectCols + ` FROM download_jobs WHERE status = 'pending' ORDER BY created_at ASC`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var jobs []DownloadJob
+	for rows.Next() {
+		j, err := scanDownloadJob(rows.Scan)
+		if err != nil {
+			return nil, err
+		}
+		jobs = append(jobs, j)
+	}
+	return jobs, rows.Err()
+}
+
+func ClaimDownloadJob(id int) (bool, error) {
+	res, err := DB.Exec(`UPDATE download_jobs SET status = 'downloading', error_message = NULL, updated_at = `+nowUTCExpr()+` WHERE id = ? AND status = 'pending'`, id)
+	if err != nil {
+		return false, err
+	}
+	n, err := res.RowsAffected()
+	return n == 1, err
+}
+
+func UpdateDownloadJobProgress(id int, progress float64) error {
+	_, err := DB.Exec(`UPDATE download_jobs SET progress = ?, updated_at = `+nowUTCExpr()+` WHERE id = ?`, progress, id)
+	return err
+}
+
+func CompleteDownloadJob(id int, filePath string, fileSize int64) error {
+	_, err := DB.Exec(`UPDATE download_jobs SET status = 'completed', file_path = ?, file_size = ?, progress = 100, updated_at = `+nowUTCExpr()+` WHERE id = ?`,
+		filePath, fileSize, id)
+	return err
+}
+
+func FailDownloadJob(id int, errMsg string) error {
+	_, err := DB.Exec(`UPDATE download_jobs SET status = 'failed', error_message = ?, updated_at = `+nowUTCExpr()+` WHERE id = ?`, errMsg, id)
+	return err
+}
+
+func CancelDownloadJob(id int) error {
+	_, err := DB.Exec(`UPDATE download_jobs SET status = 'cancelled', updated_at = `+nowUTCExpr()+` WHERE id = ? AND status IN ('pending', 'downloading')`, id)
+	return err
+}
+
+func MarkDownloadingAsFailed() error {
+	_, err := DB.Exec(`UPDATE download_jobs SET status = 'failed', error_message = 'Interrupted by server restart' WHERE status = 'downloading'`)
+	return err
+}

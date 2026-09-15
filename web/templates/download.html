@@ -1,0 +1,410 @@
+{{define "content"}}
+<div style="display: flex; gap: 2rem; align-items: flex-start; flex-wrap: wrap;">
+    <div class="card" style="flex: 2; min-width: 600px;">
+        <h2>URL Download</h2>
+        {{if not .YTDLPAvailable}}
+        <div class="alert alert-warning" style="margin-bottom: 1rem;">
+            yt-dlp is not installed or not found on this server. Install yt-dlp and set <code>downloader.ytdlp_path</code> in config.
+        </div>
+        {{end}}
+        {{if and .YTDLPAvailable (not .YTDLPCookiesReady)}}
+        <div class="alert alert-warning" style="margin-bottom: 1rem;">
+            YouTube and some other sites may ask you to sign in or prove you are not a bot. Export cookies from your browser to a Netscape <code>cookies.txt</code> file, mount it into the server, and set <code>downloader.cookies_file</code> in config (or <code>GOENCODE_YTDLP_COOKIES_FILE</code>).
+        </div>
+        {{end}}
+            <label>URL</label>
+            <div style="display: flex; gap: 0.5rem;">
+                <input type="url" id="download-url" class="form-control" placeholder="https://..." {{if not .YTDLPAvailable}}disabled{{end}}>
+                <button type="button" class="btn" id="probe-btn" onclick="probeURL()" {{if not .YTDLPAvailable}}disabled{{end}}>Fetch info</button>
+            </div>
+        </div>
+
+        <div id="probe-result" style="display: none;">
+            <div class="download-meta" id="download-meta"></div>
+
+            <div class="form-group">
+                <label>Format</label>
+                <select id="format-select" class="form-control"></select>
+            </div>
+            <div class="form-group" id="advanced-format-group" style="display: none;">
+                <label>Advanced format string</label>
+                <input type="text" id="format-advanced" class="form-control" placeholder="bestvideo+bestaudio/best">
+            </div>
+
+            <div class="form-group">
+                <label>Filename (optional)</label>
+                <input type="text" id="download-filename" class="form-control" placeholder="Defaults to video title">
+            </div>
+
+            <div class="form-group">
+                <label>Mode</label>
+                <select id="download-mode" class="form-control" onchange="updateDownloadMode()">
+                    <option value="download_only">Download only</option>
+                    <option value="encode">Download and encode</option>
+                </select>
+            </div>
+
+            <div class="form-group" id="watch-folder-group" style="display: none;">
+                <label>Watch folder (encode settings)</label>
+                <select id="watch-folder-select" class="form-control"></select>
+            </div>
+
+            <div class="form-group" id="dest-path-group">
+                <label>Destination folder</label>
+                <div class="fs-browser">
+                    <div class="fs-breadcrumb" id="fs-breadcrumb"></div>
+                    <div class="fs-list" id="fs-list"></div>
+                    <div class="fs-selected">
+                        <span>Selected:</span>
+                        <code id="selected-path">/</code>
+                        <button type="button" class="btn btn-outline btn-sm" onclick="selectCurrentPath()">Select this folder</button>
+                    </div>
+                </div>
+            </div>
+
+            <button type="button" class="btn" id="start-download-btn" style="width: 100%;" onclick="startDownload()" {{if not .YTDLPAvailable}}disabled{{end}}>Start download</button>
+        </div>
+    </div>
+
+    <div class="card" style="flex: 1; min-width: 360px;">
+        <h2>Downloads</h2>
+        <div id="downloads-list">
+            <p class="form-hint">No downloads yet.</p>
+        </div>
+    </div>
+</div>
+
+<script>
+    let probeData = null;
+    let currentFSPath = '/';
+    let selectedDestPath = '';
+    let watchFolders = [];
+    let downloadJobs = {};
+
+    function formatDuration(seconds) {
+        if (!seconds || seconds <= 0) return '';
+        const h = Math.floor(seconds / 3600);
+        const m = Math.floor((seconds % 3600) / 60);
+        const s = Math.floor(seconds % 60);
+        if (h > 0) return `${h}h ${m}m ${s}s`;
+        if (m > 0) return `${m}m ${s}s`;
+        return `${s}s`;
+    }
+
+    function formatBytes(bytes) {
+        if (!bytes || bytes <= 0) return '0 B';
+        const units = ['B', 'KB', 'MB', 'GB', 'TB'];
+        let i = 0;
+        let n = bytes;
+        while (n >= 1024 && i < units.length - 1) {
+            n /= 1024;
+            i++;
+        }
+        return `${n.toFixed(i === 0 ? 0 : 1)} ${units[i]}`;
+    }
+
+    function statusLabel(status) {
+        const map = {
+            pending: 'Pending',
+            downloading: 'Downloading',
+            completed: 'Completed',
+            failed: 'Failed',
+            cancelled: 'Cancelled'
+        };
+        return map[status] || status;
+    }
+
+    async function loadWatchFolders() {
+        const res = await fetch('/api/folders');
+        if (!res.ok) return;
+        watchFolders = await res.json();
+        const sel = document.getElementById('watch-folder-select');
+        sel.innerHTML = '';
+        watchFolders.filter(f => f.enabled).forEach(f => {
+            const opt = document.createElement('option');
+            opt.value = f.id;
+            opt.textContent = `${f.folder_path} (${f.media_type})`;
+            sel.appendChild(opt);
+        });
+    }
+
+    async function loadDownloads() {
+        const res = await fetch('/api/download/jobs?limit=50');
+        if (!res.ok) return;
+        const jobs = await res.json();
+        jobs.forEach(j => { downloadJobs[j.id] = j; });
+        renderDownloads();
+    }
+
+    function renderDownloads() {
+        const root = document.getElementById('downloads-list');
+        const jobs = Object.values(downloadJobs).sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
+        if (jobs.length === 0) {
+            root.innerHTML = '<p class="form-hint">No downloads yet.</p>';
+            return;
+        }
+        root.innerHTML = jobs.map(j => {
+            const title = j.title || j.url;
+            const pct = Math.round(j.progress || 0);
+            const canCancel = j.status === 'pending' || j.status === 'downloading';
+            const canFetch = j.status === 'completed' && j.mode === 'download_only';
+            return `
+                <div class="download-item" data-id="${j.id}">
+                    <div class="download-item-title">${escapeHtml(title)}</div>
+                    <div class="download-item-meta">
+                        <span class="badge badge-${j.status}">${statusLabel(j.status)}</span>
+                        ${j.file_size ? `<span>${formatBytes(j.file_size)}</span>` : ''}
+                    </div>
+                    ${j.status === 'downloading' || j.status === 'pending' ? `
+                        <div class="progress-bar"><div class="progress-fill" style="width:${pct}%"></div></div>
+                    ` : ''}
+                    ${j.error_message ? `<div class="form-hint" style="color:var(--error)">${escapeHtml(j.error_message)}</div>` : ''}
+                    <div class="download-item-actions">
+                        ${canCancel ? `<button class="btn btn-outline btn-sm" onclick="cancelDownload(${j.id})">Cancel</button>` : ''}
+                        ${canFetch ? `<a class="btn btn-sm" href="/api/download/file/${j.id}">Download to my computer</a>` : ''}
+                    </div>
+                </div>
+            `;
+        }).join('');
+    }
+
+    function escapeHtml(s) {
+        return String(s || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+    }
+
+    async function probeURL() {
+        const url = document.getElementById('download-url').value.trim();
+        if (!url) {
+            toast('Enter a URL', 'error');
+            return;
+        }
+        const btn = document.getElementById('probe-btn');
+        btn.disabled = true;
+        btn.textContent = 'Fetching...';
+        try {
+            const res = await fetch('/api/download/probe', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ url })
+            });
+            if (!res.ok) {
+                await toastHttpError(res, 'Failed to fetch URL info');
+                return;
+            }
+            probeData = await res.json();
+            showProbeResult(probeData);
+            toast('Metadata loaded');
+        } finally {
+            btn.disabled = false;
+            btn.textContent = 'Fetch info';
+        }
+    }
+
+    function showProbeResult(data) {
+        document.getElementById('probe-result').style.display = 'block';
+        const meta = document.getElementById('download-meta');
+        const thumb = data.thumbnail ? `<img src="${escapeHtml(data.thumbnail)}" alt="" class="download-thumb">` : '';
+        meta.innerHTML = `
+            ${thumb}
+            <div>
+                <div class="download-title">${escapeHtml(data.title)}</div>
+                <div class="form-hint">
+                    ${data.uploader ? escapeHtml(data.uploader) + ' · ' : ''}
+                    ${data.extractor ? escapeHtml(data.extractor) + ' · ' : ''}
+                    ${formatDuration(data.duration)}
+                </div>
+            </div>
+        `;
+        document.getElementById('download-filename').value = '';
+        document.getElementById('download-filename').placeholder = data.title || 'download';
+
+        const sel = document.getElementById('format-select');
+        sel.innerHTML = '';
+        (data.suggested || []).forEach(p => {
+            const opt = document.createElement('option');
+            opt.value = p.format_id;
+            opt.textContent = p.label;
+            sel.appendChild(opt);
+        });
+        const adv = document.createElement('option');
+        adv.value = '__advanced__';
+        adv.textContent = 'Advanced (custom format string)';
+        sel.appendChild(adv);
+        sel.onchange = () => {
+            document.getElementById('advanced-format-group').style.display =
+                sel.value === '__advanced__' ? 'block' : 'none';
+        };
+        sel.dispatchEvent(new Event('change'));
+
+        updateDownloadMode();
+        if (!selectedDestPath) {
+            browseFS('/');
+        }
+    }
+
+    function updateDownloadMode() {
+        const mode = document.getElementById('download-mode').value;
+        const isEncode = mode === 'encode';
+        document.getElementById('watch-folder-group').style.display = isEncode ? 'block' : 'none';
+        document.getElementById('dest-path-group').style.display = isEncode ? 'none' : 'block';
+    }
+
+    async function browseFS(path) {
+        const res = await fetch('/api/fs/list?path=' + encodeURIComponent(path || ''));
+        if (!res.ok) {
+            await toastHttpError(res, 'Could not browse directory');
+            return;
+        }
+        const data = await res.json();
+        currentFSPath = data.path;
+        if (!selectedDestPath) {
+            selectedDestPath = data.path;
+        }
+        document.getElementById('selected-path').textContent = selectedDestPath;
+
+        const crumb = document.getElementById('fs-breadcrumb');
+        const parts = data.path.split('/').filter(Boolean);
+        let built = '';
+        let html = `<a href="#" onclick="browseFS('/'); return false;">/</a>`;
+        parts.forEach(p => {
+            built += '/' + p;
+            const pPath = built;
+            html += ` / <a href="#" onclick="browseFS('${pPath.replace(/'/g, "\\'")}'); return false;">${escapeHtml(p)}</a>`;
+        });
+        crumb.innerHTML = html;
+
+        const list = document.getElementById('fs-list');
+        const dirs = (data.entries || []).filter(e => e.is_dir).sort((a, b) => a.name.localeCompare(b.name));
+        if (dirs.length === 0) {
+            list.innerHTML = '<div class="form-hint">No subdirectories</div>';
+        } else {
+            list.innerHTML = dirs.map(e => `
+                <div class="fs-entry" onclick="browseFS('${e.path.replace(/'/g, "\\'")}')">
+                    <span class="fs-dir-icon">[dir]</span> ${escapeHtml(e.name)}
+                </div>
+            `).join('');
+        }
+    }
+
+    function selectCurrentPath() {
+        selectedDestPath = currentFSPath;
+        document.getElementById('selected-path').textContent = selectedDestPath;
+        toast('Destination selected');
+    }
+
+    function getFormatID() {
+        const sel = document.getElementById('format-select');
+        if (sel.value === '__advanced__') {
+            return document.getElementById('format-advanced').value.trim() || 'bestvideo+bestaudio/best';
+        }
+        return sel.value;
+    }
+
+    async function startDownload() {
+        if (!probeData) {
+            toast('Fetch URL info first', 'error');
+            return;
+        }
+        const url = document.getElementById('download-url').value.trim();
+        const mode = document.getElementById('download-mode').value;
+        const filename = document.getElementById('download-filename').value.trim();
+        const formatID = getFormatID();
+        const payload = {
+            url,
+            title: probeData.title,
+            format_id: formatID,
+            filename,
+            mode
+        };
+        if (mode === 'encode') {
+            const folderID = parseInt(document.getElementById('watch-folder-select').value, 10);
+            if (!folderID) {
+                toast('Select a watch folder', 'error');
+                return;
+            }
+            payload.watch_folder_id = folderID;
+        } else {
+            if (!selectedDestPath) {
+                toast('Select a destination folder', 'error');
+                return;
+            }
+            payload.dest_path = selectedDestPath;
+        }
+
+        const btn = document.getElementById('start-download-btn');
+        btn.disabled = true;
+        try {
+            const res = await fetch('/api/download/start', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(payload)
+            });
+            if (!res.ok) {
+                await toastHttpError(res, 'Failed to start download');
+                return;
+            }
+            const data = await res.json();
+            toast('Download started');
+            await loadDownloads();
+        } finally {
+            btn.disabled = false;
+        }
+    }
+
+    async function cancelDownload(id) {
+        const res = await fetch('/api/download/cancel/' + id, { method: 'POST' });
+        if (!res.ok) {
+            await toastHttpError(res, 'Cancel failed');
+            return;
+        }
+        toast('Download cancelled');
+        await loadDownloads();
+    }
+
+    function onDownloadEvent(event, data) {
+        if (event === 'download_started' || (data && !downloadJobs[data.id])) {
+            loadDownloads();
+            return;
+        }
+        if (!data || !data.id) {
+            return;
+        }
+        if (downloadJobs[data.id]) {
+            Object.assign(downloadJobs[data.id], data);
+            if (event === 'download_progress') {
+                downloadJobs[data.id].progress = data.progress;
+                downloadJobs[data.id].status = 'downloading';
+            }
+            if (event === 'download_completed') {
+                downloadJobs[data.id].status = 'completed';
+                downloadJobs[data.id].file_path = data.file_path;
+                downloadJobs[data.id].file_size = data.file_size;
+                downloadJobs[data.id].mode = data.mode;
+                downloadJobs[data.id].progress = 100;
+            }
+            if (event === 'download_failed') {
+                downloadJobs[data.id].status = 'failed';
+                downloadJobs[data.id].error_message = data.error;
+            }
+            if (event === 'download_cancelled') {
+                downloadJobs[data.id].status = 'cancelled';
+            }
+        } else {
+            loadDownloads();
+            return;
+        }
+        renderDownloads();
+    }
+
+    ['download_started', 'download_progress', 'download_completed', 'download_failed', 'download_cancelled'].forEach(ev => {
+        window.sse.addEventListener(ev, e => {
+            try {
+                onDownloadEvent(ev, JSON.parse(e.data));
+            } catch (err) {}
+        });
+    });
+
+    loadWatchFolders();
+    loadDownloads();
+</script>
+{{end}}

@@ -178,3 +178,21 @@ type JobReport struct {
 	EncodeSettings
 	CreatedAt time.Time `json:"created_at"`
 }
+
+type DownloadJob struct {
+	ID            int       `json:"id"`
+	URL           string    `json:"url"`
+	Title         string    `json:"title"`
+	Filename      string    `json:"filename"`
+	DestPath      string    `json:"dest_path"`
+	FilePath      string    `json:"file_path"`
+	FormatID      string    `json:"format_id"`
+	Mode          string    `json:"mode"` // encode, download_only
+	WatchFolderID *int      `json:"watch_folder_id,omitempty"`
+	Status        string    `json:"status"`
+	Progress      float64   `json:"progress"`
+	ErrorMessage  string    `json:"error_message"`
+	FileSize      int64     `json:"file_size"`
+	CreatedAt     time.Time `json:"created_at"`
+	UpdatedAt     time.Time `json:"updated_at"`
+}

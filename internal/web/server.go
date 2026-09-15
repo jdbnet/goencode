@@ -13,6 +13,7 @@ import (
 
 	"goencode/internal/config"
 	"goencode/internal/db"
+	"goencode/internal/downloader"
 	"goencode/internal/logger"
 	"goencode/internal/queue"
 	"goencode/internal/watcher"
@@ -23,13 +24,14 @@ type Server struct {
 	cfg          *config.Config
 	qm           *queue.Manager
 	wm           *watcher.Manager
+	dm           *downloader.Manager
 	sse          *SSEServer
 	mux          *http.ServeMux
 	sessionToken string
 	version      string
 }
 
-func NewServer(cfg *config.Config, qm *queue.Manager, wm *watcher.Manager, sse *SSEServer, version string) *Server {
+func NewServer(cfg *config.Config, qm *queue.Manager, wm *watcher.Manager, dm *downloader.Manager, sse *SSEServer, version string) *Server {
 	b := make([]byte, 32)
 	rand.Read(b)
 	token := hex.EncodeToString(b)
@@ -38,6 +40,7 @@ func NewServer(cfg *config.Config, qm *queue.Manager, wm *watcher.Manager, sse *
 		cfg:          cfg,
 		qm:           qm,
 		wm:           wm,
+		dm:           dm,
 		sse:          sse,
 		mux:          http.NewServeMux(),
 		sessionToken: token,
@@ -147,6 +150,12 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("/api/folders/enabled/", s.handleSetWatchFolderEnabled)
 	s.mux.HandleFunc("/api/folders/delete/", s.handleDeleteWatchFolder)
 	s.mux.HandleFunc("/api/ffmpeg/preview", s.handleFFmpegPreview)
+	s.mux.HandleFunc("/api/download/probe", s.handleDownloadProbe)
+	s.mux.HandleFunc("/api/download/start", s.handleDownloadStart)
+	s.mux.HandleFunc("/api/download/jobs", s.handleGetDownloadJobs)
+	s.mux.HandleFunc("/api/download/cancel/", s.handleCancelDownload)
+	s.mux.HandleFunc("/api/download/file/", s.handleDownloadFile)
+	s.mux.HandleFunc("/api/fs/list", s.handleFSList)
 	s.mux.HandleFunc("/api/logs", s.handleGetLogs)
 	s.mux.HandleFunc("/api/reports", s.handleGetReports)
 
@@ -155,6 +164,7 @@ func (s *Server) routes() {
 
 	// Pages
 	s.mux.HandleFunc("/", s.handleDashboard)
+	s.mux.HandleFunc("/download", s.handleDownloadPage)
 	s.mux.HandleFunc("/folders", s.handlePage("folders.html"))
 	s.mux.HandleFunc("/history", s.handleHistory)
 	s.mux.HandleFunc("/reports", s.handlePage("reports.html"))
@@ -197,8 +207,10 @@ func (s *Server) handleStatus(w http.ResponseWriter, r *http.Request) {
 			"saved_space_formatted": formatBytes(stats.TotalSavedSpace),
 			"queue_length":          stats.QueueLength,
 		},
-		"current_job": processingJob,
-		"schedule":    s.qm.ScheduleState(),
+		"current_job":     processingJob,
+		"schedule":              s.qm.ScheduleState(),
+		"ytdlp_available":       s.dm != nil && s.dm.Available(),
+		"ytdlp_cookies_ready":   s.dm != nil && s.dm.Client().CookiesConfigured(),
 	}
 
 	json.NewEncoder(w).Encode(response)

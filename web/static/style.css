@@ -837,3 +837,152 @@ tbody tr.folder-disabled {
 		max-width: none;
 	}
 }
+
+/* Download page */
+.download-meta {
+	display: flex;
+	gap: 1rem;
+	align-items: flex-start;
+	margin-bottom: 1.5rem;
+	padding: 1rem;
+	background: var(--bg);
+	border: 1px solid var(--border);
+	border-radius: 8px;
+}
+
+.download-thumb {
+	width: 120px;
+	height: 68px;
+	object-fit: cover;
+	border-radius: 4px;
+	flex-shrink: 0;
+}
+
+.download-title {
+	font-weight: 600;
+	margin-bottom: 0.25rem;
+}
+
+.fs-browser {
+	border: 1px solid var(--border);
+	border-radius: 8px;
+	overflow: hidden;
+	background: var(--bg);
+}
+
+.fs-breadcrumb {
+	padding: 0.75rem 1rem;
+	border-bottom: 1px solid var(--border);
+	font-size: 0.875rem;
+	word-break: break-all;
+}
+
+.fs-breadcrumb a {
+	color: var(--accent);
+}
+
+.fs-list {
+	max-height: 200px;
+	overflow-y: auto;
+}
+
+.fs-entry {
+	padding: 0.5rem 1rem;
+	cursor: pointer;
+	font-size: 0.875rem;
+	border-bottom: 1px solid var(--border);
+}
+
+.fs-entry:hover {
+	background: var(--surface-hover);
+}
+
+.fs-selected {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: center;
+	gap: 0.75rem;
+	padding: 0.75rem 1rem;
+	border-top: 1px solid var(--border);
+	font-size: 0.875rem;
+}
+
+.fs-selected code {
+	flex: 1;
+	min-width: 120px;
+	word-break: break-all;
+}
+
+.download-item {
+	padding: 1rem 0;
+	border-bottom: 1px solid var(--border);
+}
+
+.download-item:last-child {
+	border-bottom: none;
+}
+
+.download-item-title {
+	font-weight: 500;
+	margin-bottom: 0.35rem;
+	word-break: break-word;
+}
+
+.download-item-meta {
+	display: flex;
+	gap: 0.75rem;
+	align-items: center;
+	font-size: 0.8rem;
+	color: var(--text-secondary);
+	margin-bottom: 0.5rem;
+}
+
+.download-item-actions {
+	display: flex;
+	gap: 0.5rem;
+	flex-wrap: wrap;
+	margin-top: 0.5rem;
+}
+
+.progress-bar {
+	height: 6px;
+	background: var(--border);
+	border-radius: 3px;
+	overflow: hidden;
+	margin: 0.5rem 0;
+}
+
+.progress-fill {
+	height: 100%;
+	background: var(--accent);
+	transition: width 0.3s ease;
+}
+
+.badge {
+	display: inline-block;
+	padding: 0.15rem 0.5rem;
+	border-radius: 4px;
+	font-size: 0.7rem;
+	text-transform: uppercase;
+	letter-spacing: 0.04em;
+	background: var(--surface-hover);
+}
+
+.badge-completed { color: var(--success); }
+.badge-downloading { color: var(--accent); }
+.badge-failed { color: var(--error); }
+.badge-cancelled { color: var(--text-secondary); }
+.badge-pending { color: var(--warning); }
+
+.btn-sm {
+	padding: 0.35rem 0.75rem;
+	font-size: 0.8rem;
+}
+
+.alert-warning {
+	padding: 0.75rem 1rem;
+	border-radius: 8px;
+	border: 1px solid var(--warning);
+	color: var(--warning);
+	background: rgba(245, 158, 11, 0.08);
+}

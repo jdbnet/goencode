@@ -175,6 +175,50 @@ func TestDatabaseDriverSQLiteOverridesHost(t *testing.T) {
 	}
 }
 
+func TestDownloaderWorkersDefault(t *testing.T) {
+	t.Setenv("GOENCODE_DOWNLOADER_WORKERS", "")
+	cfg, err := LoadConfig("does-not-exist.yaml")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.Downloader.Workers != 1 {
+		t.Fatalf("Workers = %d, want 1", cfg.Downloader.Workers)
+	}
+	if cfg.Downloader.YTDLPPath != "yt-dlp" {
+		t.Fatalf("YTDLPPath = %q, want yt-dlp", cfg.Downloader.YTDLPPath)
+	}
+}
+
+func TestDownloaderWorkersEnv(t *testing.T) {
+	t.Setenv("GOENCODE_DOWNLOADER_WORKERS", "3")
+	t.Setenv("GOENCODE_YTDLP_PATH", "/usr/bin/yt-dlp")
+	cfg, err := LoadConfig("does-not-exist.yaml")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.Downloader.Workers != 3 {
+		t.Fatalf("Workers = %d, want 3", cfg.Downloader.Workers)
+	}
+	if cfg.Downloader.YTDLPPath != "/usr/bin/yt-dlp" {
+		t.Fatalf("YTDLPPath = %q", cfg.Downloader.YTDLPPath)
+	}
+}
+
+func TestDownloaderCookiesEnv(t *testing.T) {
+	t.Setenv("GOENCODE_YTDLP_COOKIES_FILE", "/etc/goencode/cookies.txt")
+	t.Setenv("GOENCODE_YTDLP_COOKIES_FROM_BROWSER", "firefox")
+	cfg, err := LoadConfig("does-not-exist.yaml")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.Downloader.CookiesFile != "/etc/goencode/cookies.txt" {
+		t.Fatalf("CookiesFile = %q", cfg.Downloader.CookiesFile)
+	}
+	if cfg.Downloader.CookiesFromBrowser != "firefox" {
+		t.Fatalf("CookiesFromBrowser = %q", cfg.Downloader.CookiesFromBrowser)
+	}
+}
+
 func TestDatabaseMariaDBAlias(t *testing.T) {
 	t.Setenv("GOENCODE_DB_DRIVER", "mariadb")
 	t.Setenv("GOENCODE_DB_HOST", "127.0.0.1")

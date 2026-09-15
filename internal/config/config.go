@@ -90,6 +90,13 @@ type EncoderConfig struct {
 	MinFreeGB  int    `yaml:"min_free_gb"`
 }
 
+type DownloaderConfig struct {
+	YTDLPPath          string `yaml:"ytdlp_path"`
+	Workers            int    `yaml:"workers"`
+	CookiesFile        string `yaml:"cookies_file"`
+	CookiesFromBrowser string `yaml:"cookies_from_browser"`
+}
+
 type LoggingConfig struct {
 	Level string `yaml:"level"`
 }
@@ -126,6 +133,7 @@ type Config struct {
 	Auth          AuthConfig          `yaml:"auth"`
 	Database      DatabaseConfig      `yaml:"database"`
 	Encoder       EncoderConfig       `yaml:"encoder"`
+	Downloader    DownloaderConfig    `yaml:"downloader"`
 	Logging       LoggingConfig       `yaml:"logging"`
 	Notifications NotificationsConfig `yaml:"notifications"`
 }
@@ -158,6 +166,10 @@ func LoadConfig(path string) (*Config, error) {
 	cfg.Encoder.Workers = getEnvInt("GOENCODE_ENCODER_WORKERS", cfg.Encoder.Workers)
 	cfg.Encoder.Threads = getEnvInt("GOENCODE_ENCODER_THREADS", cfg.Encoder.Threads)
 	cfg.Encoder.MinFreeGB = getEnvInt("GOENCODE_ENCODER_MIN_FREE_GB", cfg.Encoder.MinFreeGB)
+	cfg.Downloader.YTDLPPath = getEnvStr("GOENCODE_YTDLP_PATH", cfg.Downloader.YTDLPPath)
+	cfg.Downloader.Workers = getEnvInt("GOENCODE_DOWNLOADER_WORKERS", cfg.Downloader.Workers)
+	cfg.Downloader.CookiesFile = getEnvStr("GOENCODE_YTDLP_COOKIES_FILE", cfg.Downloader.CookiesFile)
+	cfg.Downloader.CookiesFromBrowser = getEnvStr("GOENCODE_YTDLP_COOKIES_FROM_BROWSER", cfg.Downloader.CookiesFromBrowser)
 	cfg.Logging.Level = getEnvStr("GOENCODE_LOG_LEVEL", cfg.Logging.Level)
 	cfg.Notifications.WebhookURL = getEnvStr("GOENCODE_WEBHOOK_URL", cfg.Notifications.WebhookURL)
 	cfg.Notifications.Ntfy.URL = getEnvStr("GOENCODE_NTFY_URL", cfg.Notifications.Ntfy.URL)
@@ -199,6 +211,10 @@ func LoadConfig(path string) (*Config, error) {
 	if cfg.Encoder.MinFreeGB <= 0 {
 		cfg.Encoder.MinFreeGB = 5
 	}
+	if cfg.Downloader.YTDLPPath == "" {
+		cfg.Downloader.YTDLPPath = "yt-dlp"
+	}
+	cfg.Downloader.Workers = clampWorkers(cfg.Downloader.Workers)
 
 	if envTZ := os.Getenv("TZ"); envTZ != "" {
 		cfg.Server.TimeZone = envTZ

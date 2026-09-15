@@ -19,7 +19,7 @@ FROM debian:bookworm-slim
 
 # Install ffmpeg, ca-certificates, and tzdata for timezone support
 RUN apt-get update && \
-    apt-get install -y --no-install-recommends ffmpeg ca-certificates tzdata && \
+    apt-get install -y --no-install-recommends ffmpeg yt-dlp ca-certificates tzdata && \
     rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app

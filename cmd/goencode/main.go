@@ -10,6 +10,7 @@ import (
 
 	"goencode/internal/config"
 	"goencode/internal/db"
+	"goencode/internal/downloader"
 	"goencode/internal/logger"
 	"goencode/internal/notify"
 	"goencode/internal/queue"
@@ -68,7 +69,18 @@ func main() {
 	wm.Start()
 	defer wm.Stop()
 
-	server := web.NewServer(cfg, qm, wm, sseServer, Version)
+	dm := downloader.NewManager(cfg.Downloader, qm, sseServer.Broadcast)
+	dm.Start()
+	defer dm.Stop()
+	if cfg.Downloader.CookiesFile != "" || cfg.Downloader.CookiesFromBrowser != "" {
+		if dm.Available() && !dm.Client().CookiesConfigured() {
+			log.Printf("yt-dlp cookies configured but not usable (check cookies_file path or browser name)")
+		} else if dm.Client().CookiesConfigured() {
+			log.Printf("yt-dlp using cookies for site authentication")
+		}
+	}
+
+	server := web.NewServer(cfg, qm, wm, dm, sseServer, Version)
 
 	go func() {
 		log.Printf("Starting GoEncode Web UI (v%s) on %s:%d", Version, cfg.Server.ListenAddr, cfg.Server.Port)

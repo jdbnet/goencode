@@ -24,6 +24,16 @@ encoder:
   threads: 0
   min_free_gb: 5
 
+downloader:
+  ytdlp_path: "yt-dlp"
+  workers: 1
+  # YouTube and some sites require logged-in cookies. Export cookies.txt from your
+  # browser (Netscape format) and point to it here. In Docker, mount the file in
+  # and set this path inside the container.
+  # cookies_file: "/etc/goencode/cookies.txt"
+  # For bare-metal installs only (not Docker): read cookies directly from a browser profile.
+  # cookies_from_browser: "chrome"
+
 logging:
   level: "info"
 
