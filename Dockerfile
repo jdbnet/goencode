@@ -17,9 +17,12 @@ RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -ldflags="-s -w -X main.Versi
 # Final stage
 FROM debian:bookworm-slim
 
-# Install ffmpeg, ca-certificates, and tzdata for timezone support
+# Install ffmpeg and fetch the latest yt-dlp release from GitHub (Debian package is very outdated)
 RUN apt-get update && \
-    apt-get install -y --no-install-recommends ffmpeg yt-dlp ca-certificates tzdata && \
+    apt-get install -y --no-install-recommends ffmpeg ca-certificates tzdata curl python3 && \
+    curl -fsSL https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp -o /usr/local/bin/yt-dlp && \
+    chmod a+rx /usr/local/bin/yt-dlp && \
+    yt-dlp --version && \
     rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
