@@ -25,6 +25,7 @@ services:
     volumes:
       - ./goencode.yaml:/etc/goencode/config.yaml:ro
       - ./media:/media
+      - goencode_data:/tmp/goencode
       # Export cookies.txt from your browser for YouTube and similar sites:
       # - ./cookies.txt:/etc/goencode/cookies.txt:ro
     depends_on:
@@ -32,3 +33,4 @@ services:
 
 volumes:
   db_data:
+  goencode_data:

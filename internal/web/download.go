@@ -10,6 +10,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"time"
 
 	"goencode/internal/db"
 	rootweb "goencode/web"
@@ -321,17 +322,83 @@ func (s *Server) handleDownloadFile(w http.ResponseWriter, r *http.Request) {
 	io.Copy(w, f)
 }
 
+func (s *Server) downloadCookiesStatus() map[string]interface{} {
+	if s.dm == nil {
+		return map[string]interface{}{
+			"configured":      false,
+			"can_upload":      false,
+			"config_override": false,
+		}
+	}
+	st := s.dm.CookiesStatus()
+	resp := map[string]interface{}{
+		"configured":      st.Configured,
+		"source":          st.Source,
+		"size":            st.Size,
+		"config_override": st.ConfigOverride,
+		"can_upload":      st.CanUpload,
+	}
+	if !st.ModifiedAt.IsZero() {
+		resp["modified_at"] = st.ModifiedAt.Format(time.RFC3339)
+	}
+	return resp
+}
+
+func (s *Server) handleDownloadCookies(w http.ResponseWriter, r *http.Request) {
+	if s.dm == nil {
+		http.Error(w, "download manager not available", http.StatusServiceUnavailable)
+		return
+	}
+
+	switch r.Method {
+	case http.MethodGet:
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(s.downloadCookiesStatus())
+	case http.MethodPost:
+		const maxUpload = 5*1024*1024 + 4096
+		r.Body = http.MaxBytesReader(w, r.Body, maxUpload)
+		if err := r.ParseMultipartForm(maxUpload); err != nil {
+			http.Error(w, "upload too large or invalid form data", http.StatusBadRequest)
+			return
+		}
+		file, _, err := r.FormFile("cookies")
+		if err != nil {
+			http.Error(w, "cookies file is required", http.StatusBadRequest)
+			return
+		}
+		defer file.Close()
+		data, err := io.ReadAll(file)
+		if err != nil {
+			http.Error(w, "read upload failed", http.StatusBadRequest)
+			return
+		}
+		if err := s.dm.SaveCookiesUpload(data); err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(s.downloadCookiesStatus())
+	case http.MethodDelete:
+		if err := s.dm.DeleteCookiesUpload(); err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(s.downloadCookiesStatus())
+	default:
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+	}
+}
+
 func (s *Server) handleDownloadPage(w http.ResponseWriter, r *http.Request) {
 	data := struct {
-		AuthEnabled       bool
-		YTDLPAvailable    bool
-		YTDLPCookiesReady bool
-		Version           string
+		AuthEnabled    bool
+		YTDLPAvailable bool
+		Version        string
 	}{
-		AuthEnabled:       s.cfg.Auth.Username != "",
-		YTDLPAvailable:    s.dm != nil && s.dm.Available(),
-		YTDLPCookiesReady: s.dm != nil && s.dm.Client().CookiesConfigured(),
-		Version:           s.version,
+		AuthEnabled:    s.cfg.Auth.Username != "",
+		YTDLPAvailable: s.dm != nil && s.dm.Available(),
+		Version:        s.version,
 	}
 
 	tmpl, err := template.New("layout").Funcs(template.FuncMap{

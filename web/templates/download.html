@@ -7,11 +7,27 @@
             yt-dlp is not installed or not found on this server. Install yt-dlp and set <code>downloader.ytdlp_path</code> in config.
         </div>
         {{end}}
-        {{if and .YTDLPAvailable (not .YTDLPCookiesReady)}}
-        <div class="alert alert-warning" style="margin-bottom: 1rem;">
-            YouTube and some other sites may ask you to sign in or prove you are not a bot. Export cookies from your browser to a Netscape <code>cookies.txt</code> file, mount it into the server, and set <code>downloader.cookies_file</code> in config (or <code>GOENCODE_YTDLP_COOKIES_FILE</code>).
+
+        <div class="card cookies-card" id="cookies-card" style="margin-bottom: 1.5rem; padding: 1rem 1.25rem; background: var(--bg); border: 1px solid var(--border); border-radius: 8px;">
+            <div style="display: flex; justify-content: space-between; align-items: flex-start; gap: 1rem; flex-wrap: wrap;">
+                <div>
+                    <h3 style="margin: 0 0 0.35rem 0; font-size: 1rem;">Site cookies</h3>
+                    <p class="form-hint" style="margin: 0;">Upload a Netscape <code>cookies.txt</code> export for YouTube and other sites that require sign-in.</p>
+                </div>
+                <div id="cookies-status-badge" class="badge badge-pending">Loading...</div>
+            </div>
+            <div id="cookies-config-note" class="form-hint" style="display: none; margin-top: 0.75rem; color: var(--warning);">
+                <code>downloader.cookies_file</code> is set in config and takes priority over uploaded cookies.
+            </div>
+            <div id="cookies-upload-controls" style="margin-top: 0.75rem; display: flex; gap: 0.75rem; flex-wrap: wrap; align-items: center;">
+                <input type="file" id="cookies-file" accept=".txt,text/plain" {{if not .YTDLPAvailable}}disabled{{end}}>
+                <button type="button" class="btn btn-outline btn-sm" id="cookies-upload-btn" onclick="uploadCookies()" {{if not .YTDLPAvailable}}disabled{{end}}>Upload cookies</button>
+                <button type="button" class="btn btn-outline btn-sm" id="cookies-delete-btn" onclick="deleteCookies()" style="display: none;">Remove uploaded cookies</button>
+            </div>
+            <div id="cookies-meta" class="form-hint" style="margin-top: 0.5rem;"></div>
         </div>
-        {{end}}
+
+        <div class="form-group">
             <label>URL</label>
             <div style="display: flex; gap: 0.5rem;">
                 <input type="url" id="download-url" class="form-control" placeholder="https://..." {{if not .YTDLPAvailable}}disabled{{end}}>
@@ -404,6 +420,88 @@
         });
     });
 
+    ['download_started', 'download_progress', 'download_completed', 'download_failed', 'download_cancelled'].forEach(ev => {
+        window.sse.addEventListener(ev, e => {
+            try {
+                onDownloadEvent(ev, JSON.parse(e.data));
+            } catch (err) {}
+        });
+    });
+
+    function renderCookiesStatus(st) {
+        const badge = document.getElementById('cookies-status-badge');
+        const meta = document.getElementById('cookies-meta');
+        const deleteBtn = document.getElementById('cookies-delete-btn');
+        const configNote = document.getElementById('cookies-config-note');
+        const uploadControls = document.getElementById('cookies-upload-controls');
+
+        configNote.style.display = st.config_override ? 'block' : 'none';
+        uploadControls.style.opacity = st.can_upload ? '1' : '0.6';
+
+        if (st.configured) {
+            badge.className = 'badge badge-completed';
+            badge.textContent = st.source === 'config' ? 'Configured (config)' : st.source === 'browser' ? 'Configured (browser)' : 'Configured';
+        } else {
+            badge.className = 'badge badge-pending';
+            badge.textContent = 'Not configured';
+        }
+
+        deleteBtn.style.display = st.source === 'upload' ? 'inline-block' : 'none';
+
+        if (st.configured && st.size) {
+            let text = `Size: ${formatBytes(st.size)}`;
+            if (st.modified_at) {
+                text += ` · Updated ${new Date(st.modified_at).toLocaleString()}`;
+            }
+            meta.textContent = text;
+        } else if (!st.configured && st.can_upload) {
+            meta.textContent = 'No cookies uploaded yet.';
+        } else {
+            meta.textContent = '';
+        }
+    }
+
+    async function loadCookiesStatus() {
+        const res = await fetch('/api/download/cookies');
+        if (!res.ok) return;
+        renderCookiesStatus(await res.json());
+    }
+
+    async function uploadCookies() {
+        const input = document.getElementById('cookies-file');
+        if (!input.files || !input.files[0]) {
+            toast('Choose a cookies.txt file first', 'error');
+            return;
+        }
+        const btn = document.getElementById('cookies-upload-btn');
+        btn.disabled = true;
+        try {
+            const form = new FormData();
+            form.append('cookies', input.files[0]);
+            const res = await fetch('/api/download/cookies', { method: 'POST', body: form });
+            if (!res.ok) {
+                await toastHttpError(res, 'Upload failed');
+                return;
+            }
+            renderCookiesStatus(await res.json());
+            input.value = '';
+            toast('Cookies uploaded');
+        } finally {
+            btn.disabled = false;
+        }
+    }
+
+    async function deleteCookies() {
+        const res = await fetch('/api/download/cookies', { method: 'DELETE' });
+        if (!res.ok) {
+            await toastHttpError(res, 'Remove failed');
+            return;
+        }
+        renderCookiesStatus(await res.json());
+        toast('Uploaded cookies removed');
+    }
+
+    loadCookiesStatus();
     loadWatchFolders();
     loadDownloads();
 </script>

@@ -22,6 +22,7 @@ type activeDownload struct {
 
 type Manager struct {
 	client    *Client
+	cookies   *CookiesStore
 	workers   int
 	queueMgr  *queue.Manager
 	broadcast func(string, interface{})
@@ -35,18 +36,20 @@ type Manager struct {
 	triggerChan  chan struct{}
 }
 
-func NewManager(cfg config.DownloaderConfig, qm *queue.Manager, broadcast func(string, interface{})) *Manager {
+func NewManager(cfg config.DownloaderConfig, dataDir string, qm *queue.Manager, broadcast func(string, interface{})) *Manager {
 	workers := cfg.Workers
 	if workers < 1 {
 		workers = 1
 	}
+	cookies := NewCookiesStore(cfg, dataDir)
 	client := NewClientWithOptions(ClientOptions{
 		BinaryPath:         cfg.YTDLPPath,
-		CookiesFile:        cfg.CookiesFile,
 		CookiesFromBrowser: cfg.CookiesFromBrowser,
 	})
+	client.ApplyCookiesStore(cookies)
 	return &Manager{
 		client:      client,
+		cookies:     cookies,
 		workers:     workers,
 		queueMgr:    qm,
 		broadcast:   broadcast,
@@ -55,6 +58,35 @@ func NewManager(cfg config.DownloaderConfig, qm *queue.Manager, broadcast func(s
 		doneChan:    make(chan struct{}),
 		triggerChan: make(chan struct{}, 1),
 	}
+}
+
+func (m *Manager) CookiesStatus() CookiesStatus {
+	if m == nil {
+		return CookiesStatus{}
+	}
+	return m.cookies.Status(m.client)
+}
+
+func (m *Manager) SaveCookiesUpload(data []byte) error {
+	if m == nil || m.cookies == nil {
+		return fmt.Errorf("download manager unavailable")
+	}
+	if err := m.cookies.SaveUpload(data); err != nil {
+		return err
+	}
+	m.client.ApplyCookiesStore(m.cookies)
+	return nil
+}
+
+func (m *Manager) DeleteCookiesUpload() error {
+	if m == nil || m.cookies == nil {
+		return fmt.Errorf("download manager unavailable")
+	}
+	if err := m.cookies.DeleteUpload(); err != nil {
+		return err
+	}
+	m.client.ApplyCookiesStore(m.cookies)
+	return nil
 }
 
 func (m *Manager) Available() bool {

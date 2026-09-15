@@ -69,15 +69,13 @@ func main() {
 	wm.Start()
 	defer wm.Stop()
 
-	dm := downloader.NewManager(cfg.Downloader, qm, sseServer.Broadcast)
+	dm := downloader.NewManager(cfg.Downloader, downloader.DataDirectory(cfg), qm, sseServer.Broadcast)
 	dm.Start()
 	defer dm.Stop()
-	if cfg.Downloader.CookiesFile != "" || cfg.Downloader.CookiesFromBrowser != "" {
-		if dm.Available() && !dm.Client().CookiesConfigured() {
-			log.Printf("yt-dlp cookies configured but not usable (check cookies_file path or browser name)")
-		} else if dm.Client().CookiesConfigured() {
-			log.Printf("yt-dlp using cookies for site authentication")
-		}
+	if dm.Client().CookiesConfigured() {
+		log.Printf("yt-dlp using cookies for site authentication")
+	} else if cfg.Downloader.CookiesFile != "" || cfg.Downloader.CookiesFromBrowser != "" {
+		log.Printf("yt-dlp cookies configured but not usable (check cookies_file path or browser name)")
 	}
 
 	server := web.NewServer(cfg, qm, wm, dm, sseServer, Version)

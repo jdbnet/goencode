@@ -153,6 +153,7 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("/api/download/probe", s.handleDownloadProbe)
 	s.mux.HandleFunc("/api/download/start", s.handleDownloadStart)
 	s.mux.HandleFunc("/api/download/jobs", s.handleGetDownloadJobs)
+	s.mux.HandleFunc("/api/download/cookies", s.handleDownloadCookies)
 	s.mux.HandleFunc("/api/download/cancel/", s.handleCancelDownload)
 	s.mux.HandleFunc("/api/download/file/", s.handleDownloadFile)
 	s.mux.HandleFunc("/api/fs/list", s.handleFSList)
@@ -209,8 +210,9 @@ func (s *Server) handleStatus(w http.ResponseWriter, r *http.Request) {
 		},
 		"current_job":     processingJob,
 		"schedule":              s.qm.ScheduleState(),
-		"ytdlp_available":       s.dm != nil && s.dm.Available(),
+		"ytdlp_available":     s.dm != nil && s.dm.Available(),
 		"ytdlp_cookies_ready":   s.dm != nil && s.dm.Client().CookiesConfigured(),
+		"ytdlp_cookies_status":  s.downloadCookiesStatus(),
 	}
 
 	json.NewEncoder(w).Encode(response)
